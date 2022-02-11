@@ -6,7 +6,7 @@ description: |-
   Provides a phoenixNAP Rancher Cluster datasource. This can be used to read Rancher Server deployment details.
 ---
 
-# pnap_server Resource
+# pnap_rancher_cluster Datasource
 
 Provides a phoenixNAP Rancher Cluster datasource. This can be used to read Rancher Server deployment details.
 
@@ -24,7 +24,7 @@ data "pnap_rancher_cluster" "test" {
 }
 
 # Show the Rancher Cluster details
-output "rancher_cluster" {
+output "rancher-cluster" {
   value = data.pnap_rancher_cluster.test
 }
 ```
