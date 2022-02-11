@@ -225,10 +225,6 @@ func resourceRancherClusterCreate(d *schema.ResourceData, m interface{}) error {
 		request.Description = &desc
 	}
 	request.Location = d.Get("location").(string)
-	var inClustVer = d.Get("initial_cluster_version").(string)
-	if len(inClustVer) > 0 {
-		request.InitialClusterVersion = &inClustVer
-	}
 	// node_pools block
 	var nodePools = d.Get("node_pools").([]interface{})
 	if len(nodePools) > 0 {
