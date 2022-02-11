@@ -6,7 +6,7 @@ description: |-
   Provides a phoenixNAP Rancher Cluster resource. This can be used to create and delete Rancher Server deployments.
 ---
 
-# pnap_server Resource
+# pnap_rancher_cluster Resource
 
 Provides a phoenixNAP Rancher Cluster resource. This can be used to create and delete Rancher Server deployments.
 
