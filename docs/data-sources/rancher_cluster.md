@@ -33,7 +33,7 @@ output "rancher-cluster" {
 
 The following arguments are supported:
 
-* `id` - The Cluster identifier.
+* `id` - The cluster (Rancher Cluster) identifier.
 * `name` - Cluster name.
 
 
@@ -41,12 +41,12 @@ The following arguments are supported:
 
 The following attributes are exported:
 
-* `id` - The Cluster identifier.
+* `id` - The cluster identifier.
 * `name` - Cluster name.
 * `description` - Cluster description.
-* `location` - (Required) Deployment location. For a full list of available locations visit [API docs](https://developers.phoenixnap.com/docs/rancher/1)
+* `location` - Deployment location.
 * `initial_cluster_version` - The Rancher version that was installed on the cluster during the first creation process.
-* `node_pools` - The node pools associated with the cluster (must contain exactly one item).
+* `node_pools` - The node pools associated with the cluster.
     * `node_pool` - Node Pool Configuration. A node pool contains the name and configuration for a cluster's node pool. Node pools are set of nodes with a common configuration and specification.
         * `name` - The name of the node pool.
         * `node_count` - Number of configured nodes. Currently only node counts of 1 and 3 are possible.

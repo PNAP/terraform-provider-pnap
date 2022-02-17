@@ -15,10 +15,12 @@ func resourceRancherCluster() *schema.Resource {
 	return &schema.Resource{
 		Create: resourceRancherClusterCreate,
 		Read:   resourceRancherClusterRead,
+		Update: resourceRancherClusterUpdate,
 		Delete: resourceRancherClusterDelete,
 
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(pnapRetryTimeout),
+			Update: schema.DefaultTimeout(pnapRetryTimeout),
 			Delete: schema.DefaultTimeout(pnapDeleteRetryTimeout),
 		},
 
@@ -80,7 +82,6 @@ func resourceRancherCluster() *schema.Resource {
 													Type:     schema.TypeBool,
 													Optional: true,
 													Computed: true,
-													Default:  true,
 												},
 												"keys": {
 													Type:     schema.TypeSet,
@@ -105,7 +106,6 @@ func resourceRancherCluster() *schema.Resource {
 												"node": {
 													Type:     schema.TypeList,
 													Computed: true,
-													MaxItems: 1,
 													Elem: &schema.Resource{
 														Schema: map[string]*schema.Schema{
 															"server_id": {
@@ -183,7 +183,6 @@ func resourceRancherCluster() *schema.Resource {
 			"metadata": {
 				Type:     schema.TypeList,
 				Computed: true,
-				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"url": {
@@ -240,7 +239,7 @@ func resourceRancherClusterCreate(d *schema.ResourceData, m interface{}) error {
 			nodePoolItem := nodePool.(map[string]interface{})
 
 			name := nodePoolItem["name"].(string)
-			nodeCount := nodePoolItem["node_count"].(int32)
+			nodeCount := int32(nodePoolItem["node_count"].(int))
 			serverType := nodePoolItem["server_type"].(string)
 
 			if len(name) > 0 {
@@ -305,7 +304,7 @@ func resourceRancherClusterCreate(d *schema.ResourceData, m interface{}) error {
 		if len(etcdCron) > 0 {
 			configurationObject.EtcdSnapshotScheduleCron = &etcdCron
 		}
-		etcdRet := configurationItem["etcd_snapshot_retention"].(int32)
+		etcdRet := int32(configurationItem["etcd_snapshot_retention"].(int))
 		configurationObject.EtcdSnapshotRetention = &etcdRet
 		nodeTaint := configurationItem["node_taint"].(string)
 		if len(nodeTaint) > 0 {
@@ -411,6 +410,10 @@ func resourceRancherClusterRead(d *schema.ResourceData, m interface{}) error {
 	return nil
 }
 
+func resourceRancherClusterUpdate(d *schema.ResourceData, m interface{}) error {
+	return fmt.Errorf("unsuported action")
+}
+
 func resourceRancherClusterDelete(d *schema.ResourceData, m interface{}) error {
 	client := m.(receiver.BMCSDK)
 	clusterID := d.Id()
@@ -432,7 +435,7 @@ func flattenNodePools(nodePools []rancherapiclient.NodePool) []interface{} {
 				n["name"] = *v.Name
 			}
 			if v.NodeCount != nil {
-				n["node_count"] = *v.NodeCount
+				n["node_count"] = int(*v.NodeCount)
 			}
 			if v.ServerType != nil {
 				n["server_type"] = *v.ServerType

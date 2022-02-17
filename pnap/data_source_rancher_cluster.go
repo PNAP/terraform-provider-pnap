@@ -39,13 +39,11 @@ func dataSourceRancherCluster() *schema.Resource {
 			"node_pools": {
 				Type:     schema.TypeList,
 				Computed: true,
-				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"node_pool": {
 							Type:     schema.TypeList,
 							Computed: true,
-							MaxItems: 1,
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
 									"name": {
@@ -63,13 +61,11 @@ func dataSourceRancherCluster() *schema.Resource {
 									"ssh_config": {
 										Type:     schema.TypeList,
 										Computed: true,
-										MaxItems: 1,
 										Elem: &schema.Resource{
 											Schema: map[string]*schema.Schema{
 												"install_default_keys": {
 													Type:     schema.TypeBool,
 													Computed: true,
-													Default:  true,
 												},
 												"keys": {
 													Type:     schema.TypeSet,
@@ -92,7 +88,6 @@ func dataSourceRancherCluster() *schema.Resource {
 												"node": {
 													Type:     schema.TypeList,
 													Computed: true,
-													MaxItems: 1,
 													Elem: &schema.Resource{
 														Schema: map[string]*schema.Schema{
 															"server_id": {
@@ -114,7 +109,6 @@ func dataSourceRancherCluster() *schema.Resource {
 			"metadata": {
 				Type:     schema.TypeList,
 				Computed: true,
-				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"url": {
