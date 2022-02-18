@@ -1,6 +1,7 @@
 package pnap
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 
@@ -49,74 +50,52 @@ func resourceRancherCluster() *schema.Resource {
 				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"node_pool": {
-							Type:     schema.TypeList,
+						"name": {
+							Type:     schema.TypeString,
 							Optional: true,
 							Computed: true,
+						},
+						"node_count": {
+							Type:     schema.TypeInt,
+							Optional: true,
+							Computed: true,
+						},
+						"server_type": {
+							Type:     schema.TypeString,
+							Optional: true,
+							Computed: true,
+						},
+						"ssh_config": {
+							Type:     schema.TypeList,
+							Optional: true,
 							MaxItems: 1,
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
-									"name": {
+									"install_default_keys": {
+										Type:     schema.TypeBool,
+										Optional: true,
+									},
+									"keys": {
+										Type:     schema.TypeSet,
+										Optional: true,
+										Elem:     &schema.Schema{Type: schema.TypeString},
+									},
+									"key_ids": {
+										Type:     schema.TypeSet,
+										Optional: true,
+										Elem:     &schema.Schema{Type: schema.TypeString},
+									},
+								},
+							},
+						},
+						"nodes": {
+							Type:     schema.TypeList,
+							Computed: true,
+							Elem: &schema.Resource{
+								Schema: map[string]*schema.Schema{
+									"server_id": {
 										Type:     schema.TypeString,
-										Optional: true,
 										Computed: true,
-									},
-									"node_count": {
-										Type:     schema.TypeInt,
-										Optional: true,
-										Computed: true,
-									},
-									"server_type": {
-										Type:     schema.TypeString,
-										Optional: true,
-										Computed: true,
-									},
-									"ssh_config": {
-										Type:     schema.TypeList,
-										Optional: true,
-										Computed: true,
-										MaxItems: 1,
-										Elem: &schema.Resource{
-											Schema: map[string]*schema.Schema{
-												"install_default_keys": {
-													Type:     schema.TypeBool,
-													Optional: true,
-													Computed: true,
-												},
-												"keys": {
-													Type:     schema.TypeSet,
-													Optional: true,
-													Computed: true,
-													Elem:     &schema.Schema{Type: schema.TypeString},
-												},
-												"key_ids": {
-													Type:     schema.TypeSet,
-													Optional: true,
-													Computed: true,
-													Elem:     &schema.Schema{Type: schema.TypeString},
-												},
-											},
-										},
-									},
-									"nodes": {
-										Type:     schema.TypeList,
-										Computed: true,
-										Elem: &schema.Resource{
-											Schema: map[string]*schema.Schema{
-												"node": {
-													Type:     schema.TypeList,
-													Computed: true,
-													Elem: &schema.Resource{
-														Schema: map[string]*schema.Schema{
-															"server_id": {
-																Type:     schema.TypeString,
-																Computed: true,
-															},
-														},
-													},
-												},
-											},
-										},
 									},
 								},
 							},
@@ -224,66 +203,61 @@ func resourceRancherClusterCreate(d *schema.ResourceData, m interface{}) error {
 		request.Description = &desc
 	}
 	request.Location = d.Get("location").(string)
+
 	// node_pools block
 	var nodePools = d.Get("node_pools").([]interface{})
-	if len(nodePools) > 0 {
+	if len(nodePools) == 1 {
+		nodePool := d.Get("node_pools").([]interface{})[0]
+		nodePoolItem := nodePool.(map[string]interface{})
+		nodePoolObject := rancherapiclient.NodePool{}
+		pools := make([]rancherapiclient.NodePool, 1)
 
-		pools := make([]rancherapiclient.NodePool, len(nodePools))
+		name := nodePoolItem["name"].(string)
+		nodeCount := int32(nodePoolItem["node_count"].(int))
+		serverType := nodePoolItem["server_type"].(string)
 
-		for k, j := range nodePools {
-			nodePoolObject := rancherapiclient.NodePool{}
-
-			nodePoolsItem := j.(map[string]interface{})
-
-			nodePool := nodePoolsItem["node_pool"].([]interface{})[0]
-			nodePoolItem := nodePool.(map[string]interface{})
-
-			name := nodePoolItem["name"].(string)
-			nodeCount := int32(nodePoolItem["node_count"].(int))
-			serverType := nodePoolItem["server_type"].(string)
-
-			if len(name) > 0 {
-				nodePoolObject.Name = &name
-			}
-			if nodeCount > 0 {
-				nodePoolObject.NodeCount = &nodeCount
-			}
-			if len(serverType) > 0 {
-				nodePoolObject.ServerType = &serverType
-			}
-
-			if nodePoolItem["ssh_config"] != nil && len(nodePoolItem["ssh_config"].([]interface{})) > 0 {
-				sshConfigObject := rancherapiclient.SshConfig{}
-				nodePoolObject.SshConfig = &sshConfigObject
-
-				sshConfig := nodePoolItem["ssh_config"].([]interface{})[0]
-				sshConfigItem := sshConfig.(map[string]interface{})
-
-				installDefaultKeys := sshConfigItem["install_default_keys"].(bool)
-				sshConfigObject.InstallDefaultKeys = &installDefaultKeys
-
-				tempKeys := sshConfigItem["keys"].(*schema.Set).List()
-				keys := make([]string, len(tempKeys))
-				for i, v := range tempKeys {
-					keys[i] = fmt.Sprint(v)
-				}
-				if len(keys) > 0 {
-					sshConfigObject.Keys = &keys
-				}
-
-				tempKeyIds := sshConfigItem["key_ids"].(*schema.Set).List()
-				keyIds := make([]string, len(tempKeyIds))
-				for i, v := range tempKeyIds {
-					keyIds[i] = fmt.Sprint(v)
-				}
-				if len(keyIds) > 0 {
-					sshConfigObject.KeyIds = &keyIds
-				}
-
-			}
-			pools[k] = nodePoolObject
+		if len(name) > 0 {
+			nodePoolObject.Name = &name
 		}
+		if nodeCount > 0 {
+			nodePoolObject.NodeCount = &nodeCount
+		}
+		if len(serverType) > 0 {
+			nodePoolObject.ServerType = &serverType
+		}
+
+		if nodePoolItem["ssh_config"] != nil && len(nodePoolItem["ssh_config"].([]interface{})) > 0 {
+			sshConfigObject := rancherapiclient.SshConfig{}
+			nodePoolObject.SshConfig = &sshConfigObject
+
+			sshConfig := nodePoolItem["ssh_config"].([]interface{})[0]
+			sshConfigItem := sshConfig.(map[string]interface{})
+
+			installDefaultKeys := sshConfigItem["install_default_keys"].(bool)
+			sshConfigObject.InstallDefaultKeys = &installDefaultKeys
+
+			tempKeys := sshConfigItem["keys"].(*schema.Set).List()
+			keys := make([]string, len(tempKeys))
+			for i, v := range tempKeys {
+				keys[i] = fmt.Sprint(v)
+			}
+			if len(keys) > 0 {
+				sshConfigObject.Keys = &keys
+			}
+
+			tempKeyIds := sshConfigItem["key_ids"].(*schema.Set).List()
+			keyIds := make([]string, len(tempKeyIds))
+			for i, v := range tempKeyIds {
+				keyIds[i] = fmt.Sprint(v)
+			}
+			if len(keyIds) > 0 {
+				sshConfigObject.KeyIds = &keyIds
+			}
+		}
+		pools[0] = nodePoolObject
 		request.NodePools = &pools
+		b, _ := json.MarshalIndent(request, "", "  ")
+		log.Printf("request object is" + string(b))
 	}
 	// end of node_pools block
 	if d.Get("configuration") != nil && len(d.Get("configuration").([]interface{})) > 0 {
@@ -339,10 +313,6 @@ func resourceRancherClusterCreate(d *schema.ResourceData, m interface{}) error {
 		}
 		request.Configuration = &configurationObject
 	}
-	var statDesc = d.Get("status_description").(string)
-	if len(statDesc) > 0 {
-		request.StatusDescription = &statDesc
-	}
 
 	requestCommand := cluster.NewCreateClusterCommand(client, *request)
 	resp, err := requestCommand.Execute()
@@ -352,6 +322,21 @@ func resourceRancherClusterCreate(d *schema.ResourceData, m interface{}) error {
 		return fmt.Errorf("unknown cluster identifier")
 	} else {
 		d.SetId(*resp.Id)
+		if resp.Metadata != nil {
+			metadata := make([]interface{}, 1)
+			serverMetadata := make(map[string]interface{})
+			if resp.Metadata.Url != nil {
+				serverMetadata["url"] = *resp.Metadata.Url
+			}
+			if resp.Metadata.Username != nil {
+				serverMetadata["username"] = *resp.Metadata.Username
+			}
+			if resp.Metadata.Password != nil {
+				serverMetadata["password"] = *resp.Metadata.Password
+			}
+			metadata[0] = serverMetadata
+			d.Set("metadata", metadata)
+		}
 
 		waitResultError := clusterWaitForCreate(*resp.Id, &client)
 		if waitResultError != nil {
@@ -391,19 +376,6 @@ func resourceRancherClusterRead(d *schema.ResourceData, m interface{}) error {
 			return err
 		}
 	}
-	if resp.Metadata != nil {
-		metaData := make(map[string]interface{})
-		if resp.Metadata.Url != nil {
-			metaData["url"] = *resp.Metadata.Url
-		}
-		if resp.Metadata.Username != nil {
-			metaData["username"] = *resp.Metadata.Username
-		}
-		if resp.Metadata.Password != nil {
-			metaData["password"] = *resp.Metadata.Password
-		}
-		d.Set("metadata", metaData)
-	}
 	if resp.StatusDescription != nil {
 		d.Set("status_description", *resp.StatusDescription)
 	}
@@ -411,7 +383,10 @@ func resourceRancherClusterRead(d *schema.ResourceData, m interface{}) error {
 }
 
 func resourceRancherClusterUpdate(d *schema.ResourceData, m interface{}) error {
-	return fmt.Errorf("unsuported action")
+	if d.HasChange("location") || d.HasChange("name") || d.HasChange("description") || d.HasChange("node_pools") || d.HasChange("configuration") {
+		return fmt.Errorf("unsuported action")
+	}
+	return resourceRancherClusterRead(d, m)
 }
 
 func resourceRancherClusterDelete(d *schema.ResourceData, m interface{}) error {
@@ -427,56 +402,33 @@ func resourceRancherClusterDelete(d *schema.ResourceData, m interface{}) error {
 }
 
 func flattenNodePools(nodePools []rancherapiclient.NodePool) []interface{} {
-	if nodePools != nil {
-		np := make([]interface{}, len(nodePools))
-		for i, v := range nodePools {
-			n := make(map[string]interface{})
-			if v.Name != nil {
-				n["name"] = *v.Name
-			}
-			if v.NodeCount != nil {
-				n["node_count"] = int(*v.NodeCount)
-			}
-			if v.ServerType != nil {
-				n["server_type"] = *v.ServerType
-			}
-			if v.SshConfig != nil {
-				sc := make(map[string]interface{})
-				if v.SshConfig.InstallDefaultKeys != nil {
-					sc["install_default_keys"] = *v.SshConfig.InstallDefaultKeys
-				}
-				if v.SshConfig.Keys != nil {
-					keys := make([]interface{}, len(*v.SshConfig.Keys))
-					for j, k := range *v.SshConfig.Keys {
-						keys[j] = k
-					}
-					sc["keys"] = keys
-				}
-				if v.SshConfig.KeyIds != nil {
-					keyIds := make([]interface{}, len(*v.SshConfig.KeyIds))
-					for j, k := range *v.SshConfig.KeyIds {
-						keyIds[j] = k
-					}
-					sc["key_ids"] = keyIds
-				}
-				n["ssh_config"] = sc
-			}
-			if v.Nodes != nil {
-				nodes := make([]interface{}, len(*v.Nodes))
-				for j, k := range *v.Nodes {
-					node := make(map[string]interface{})
-					if k.ServerId != nil {
-						node["server_id"] = *k.ServerId
-					}
-					nodes[j] = node
-				}
-				n["nodes"] = nodes
-			}
-			np[i] = n
-		}
-		return np
+
+	np := make([]interface{}, 1)
+	n := make(map[string]interface{})
+	if nodePools[0].Name != nil {
+		n["name"] = *nodePools[0].Name
 	}
-	return make([]interface{}, 0)
+	if nodePools[0].NodeCount != nil {
+		n["node_count"] = int(*nodePools[0].NodeCount)
+	}
+	if nodePools[0].ServerType != nil {
+		n["server_type"] = *nodePools[0].ServerType
+	}
+	n["ssh_config"] = nil
+	if nodePools[0].Nodes != nil {
+		vNo := *nodePools[0].Nodes
+		nodes := make([]interface{}, len(vNo))
+		for j, k := range vNo {
+			node := make(map[string]interface{})
+			if k.ServerId != nil {
+				node["server_id"] = *k.ServerId
+			}
+			nodes[j] = node
+		}
+		n["nodes"] = nodes
+	}
+	np[0] = n
+	return np
 }
 
 func clusterWaitForCreate(id string, client *receiver.BMCSDK) error {

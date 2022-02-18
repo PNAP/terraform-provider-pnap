@@ -41,64 +41,26 @@ func dataSourceRancherCluster() *schema.Resource {
 				Computed: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"node_pool": {
+						"name": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"node_count": {
+							Type:     schema.TypeInt,
+							Computed: true,
+						},
+						"server_type": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"nodes": {
 							Type:     schema.TypeList,
 							Computed: true,
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
-									"name": {
+									"server_id": {
 										Type:     schema.TypeString,
 										Computed: true,
-									},
-									"node_count": {
-										Type:     schema.TypeInt,
-										Computed: true,
-									},
-									"server_type": {
-										Type:     schema.TypeString,
-										Computed: true,
-									},
-									"ssh_config": {
-										Type:     schema.TypeList,
-										Computed: true,
-										Elem: &schema.Resource{
-											Schema: map[string]*schema.Schema{
-												"install_default_keys": {
-													Type:     schema.TypeBool,
-													Computed: true,
-												},
-												"keys": {
-													Type:     schema.TypeSet,
-													Computed: true,
-													Elem:     &schema.Schema{Type: schema.TypeString},
-												},
-												"key_ids": {
-													Type:     schema.TypeSet,
-													Computed: true,
-													Elem:     &schema.Schema{Type: schema.TypeString},
-												},
-											},
-										},
-									},
-									"nodes": {
-										Type:     schema.TypeList,
-										Computed: true,
-										Elem: &schema.Resource{
-											Schema: map[string]*schema.Schema{
-												"node": {
-													Type:     schema.TypeList,
-													Computed: true,
-													Elem: &schema.Resource{
-														Schema: map[string]*schema.Schema{
-															"server_id": {
-																Type:     schema.TypeString,
-																Computed: true,
-															},
-														},
-													},
-												},
-											},
-										},
 									},
 								},
 							},
@@ -114,16 +76,6 @@ func dataSourceRancherCluster() *schema.Resource {
 						"url": {
 							Type:     schema.TypeString,
 							Computed: true,
-						},
-						"username": {
-							Type:      schema.TypeString,
-							Computed:  true,
-							Sensitive: true,
-						},
-						"password": {
-							Type:      schema.TypeString,
-							Computed:  true,
-							Sensitive: true,
 						},
 					},
 				},
@@ -171,17 +123,13 @@ func dataSourceRancherClusterRead(d *schema.ResourceData, m interface{}) error {
 							}
 						}
 						if instance.Metadata != nil {
-							metaData := make(map[string]interface{})
+							metadata := make([]interface{}, 1)
+							serverMetadata := make(map[string]interface{})
 							if instance.Metadata.Url != nil {
-								metaData["url"] = *instance.Metadata.Url
+								serverMetadata["url"] = *instance.Metadata.Url
 							}
-							if instance.Metadata.Username != nil {
-								metaData["username"] = *instance.Metadata.Username
-							}
-							if instance.Metadata.Password != nil {
-								metaData["password"] = *instance.Metadata.Password
-							}
-							d.Set("metadata", metaData)
+							metadata[0] = serverMetadata
+							d.Set("metadata", metadata)
 						}
 						if instance.StatusDescription != nil {
 							d.Set("status_description", *instance.StatusDescription)
@@ -217,17 +165,13 @@ func dataSourceRancherClusterRead(d *schema.ResourceData, m interface{}) error {
 							}
 						}
 						if instance.Metadata != nil {
-							metaData := make(map[string]interface{})
+							metadata := make([]interface{}, 1)
+							serverMetadata := make(map[string]interface{})
 							if instance.Metadata.Url != nil {
-								metaData["url"] = *instance.Metadata.Url
+								serverMetadata["url"] = *instance.Metadata.Url
 							}
-							if instance.Metadata.Username != nil {
-								metaData["username"] = *instance.Metadata.Username
-							}
-							if instance.Metadata.Password != nil {
-								metaData["password"] = *instance.Metadata.Password
-							}
-							d.Set("metadata", metaData)
+							metadata[0] = serverMetadata
+							d.Set("metadata", metadata)
 						}
 						if instance.StatusDescription != nil {
 							d.Set("status_description", *instance.StatusDescription)
@@ -270,17 +214,13 @@ func dataSourceRancherClusterRead(d *schema.ResourceData, m interface{}) error {
 			}
 		}
 		if resp.Metadata != nil {
-			metaData := make(map[string]interface{})
+			metadata := make([]interface{}, 1)
+			serverMetadata := make(map[string]interface{})
 			if resp.Metadata.Url != nil {
-				metaData["url"] = *resp.Metadata.Url
+				serverMetadata["url"] = *resp.Metadata.Url
 			}
-			if resp.Metadata.Username != nil {
-				metaData["username"] = *resp.Metadata.Username
-			}
-			if resp.Metadata.Password != nil {
-				metaData["password"] = *resp.Metadata.Password
-			}
-			d.Set("metadata", metaData)
+			metadata[0] = serverMetadata
+			d.Set("metadata", metadata)
 		}
 		if resp.StatusDescription != nil {
 			d.Set("status_description", *resp.StatusDescription)
