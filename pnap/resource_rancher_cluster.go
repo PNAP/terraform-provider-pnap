@@ -371,8 +371,26 @@ func resourceRancherClusterRead(d *schema.ResourceData, m interface{}) error {
 		d.Set("initial_cluster_version", *resp.InitialClusterVersion)
 	}
 	if resp.NodePools != nil {
-		nodePools := flattenNodePools(*resp.NodePools)
-		if err := d.Set("node_pools", nodePools); err != nil {
+		flatPool := flattenNodePools(*resp.NodePools)
+		flatPools := make([]interface{}, 1)
+		var np = d.Get("node_pools").([]interface{})
+		if len(np) == 1 {
+			n := d.Get("node_pools").([]interface{})[0]
+			nItem := n.(map[string]interface{})
+			if nItem["ssh_config"] != nil && len(nItem["ssh_config"].([]interface{})) > 0 {
+				sshConfig := nItem["ssh_config"].([]interface{})[0]
+				sshConfigItem := sshConfig.(map[string]interface{})
+				sc := make([]interface{}, 1)
+				sci := make(map[string]interface{})
+				sc[0] = sci
+				sci["install_default_keys"] = sshConfigItem["install_default_keys"].(bool)
+				sci["keys"] = sshConfigItem["keys"].(*schema.Set).List()
+				sci["key_ids"] = sshConfigItem["key_ids"].(*schema.Set).List()
+				flatPool["ssh_config"] = sc
+			}
+		}
+		flatPools[0] = flatPool
+		if err := d.Set("node_pools", flatPools); err != nil {
 			return err
 		}
 	}
@@ -383,7 +401,7 @@ func resourceRancherClusterRead(d *schema.ResourceData, m interface{}) error {
 }
 
 func resourceRancherClusterUpdate(d *schema.ResourceData, m interface{}) error {
-	if d.HasChange("location") || d.HasChange("name") || d.HasChange("description") || d.HasChange("node_pools") || d.HasChange("configuration") {
+	if d.HasChange("location") || d.HasChange("name") || d.HasChange("description") {
 		return fmt.Errorf("unsuported action")
 	}
 	return resourceRancherClusterRead(d, m)
@@ -401,9 +419,8 @@ func resourceRancherClusterDelete(d *schema.ResourceData, m interface{}) error {
 	return nil
 }
 
-func flattenNodePools(nodePools []rancherapiclient.NodePool) []interface{} {
+func flattenNodePools(nodePools []rancherapiclient.NodePool) map[string]interface{} {
 
-	np := make([]interface{}, 1)
 	n := make(map[string]interface{})
 	if nodePools[0].Name != nil {
 		n["name"] = *nodePools[0].Name
@@ -414,7 +431,6 @@ func flattenNodePools(nodePools []rancherapiclient.NodePool) []interface{} {
 	if nodePools[0].ServerType != nil {
 		n["server_type"] = *nodePools[0].ServerType
 	}
-	n["ssh_config"] = nil
 	if nodePools[0].Nodes != nil {
 		vNo := *nodePools[0].Nodes
 		nodes := make([]interface{}, len(vNo))
@@ -427,8 +443,7 @@ func flattenNodePools(nodePools []rancherapiclient.NodePool) []interface{} {
 		}
 		n["nodes"] = nodes
 	}
-	np[0] = n
-	return np
+	return n
 }
 
 func clusterWaitForCreate(id string, client *receiver.BMCSDK) error {

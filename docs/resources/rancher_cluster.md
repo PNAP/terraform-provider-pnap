@@ -32,13 +32,7 @@ resource "pnap_rancher_cluster" "Rancher-Deployment-1" {
                 "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDF9LdAFElNCi7JoWh6KUcchrJ2Gac1aqGRPpdZNowObpRtmiRCecAMb7bUgNAaNfcmwiQi7tos9TlnFgprIcfMWb8MSs3ABYHmBgqEEt3RWYf0fAc9CsIpJdMCUG28TPGTlRXCEUVNKgLMdcseAlJoGp1CgbHWIN65fB3he3kAZcfpPn5mapV0tsl2p+ZyuAGRYdn5dJv2RZDHUZBkOeUobwsij+weHCKAFmKQKtCP7ybgVHaQjAPrj8MGnk1jBbjDt5ws+Be+9JNjQJee9zCKbAOsIo3i+GcUIkrw5jxPU/RTGlWBcemPaKHdciSzGcjWboapzIy49qypQhZe1U75 userTwo"
             ]
         }               
-    }
-    lifecycle {
-      ignore_changes = [
-      # Ignore changes to node_pools because ssh_config will change value to nil after creation
-      node_pools,
-      ] 
-    } 
+    }    
 }
 ```
 
@@ -82,7 +76,11 @@ The following attributes are exported:
 * `node_pools` - The node pools associated with the cluster (must contain exactly one item).    
     * `name` - The name of the node pool.
     * `node_count` - Number of configured nodes.
-    * `server_type` - Node server type. Default value is "s0.d1.small".        
+    * `server_type` - Node server type. Default value is "s0.d1.small". 
+    * `ssh_config` - Configuration defining which public SSH keys are pre-installed as authorized on the server.
+        * `install_default-keys` - Define whether public keys marked as default should be installed on this node. Default value is true.
+        * `keys` - List of public SSH keys.
+        * `key-ids` - List of public SSH key identifiers.       
     * `nodes` - The nodes associated with this node pool.            
         * `server_id` - The server identifier.
 * `metadata` - Connection parameters to use to connect to the Rancher Server Administrative GUI.
