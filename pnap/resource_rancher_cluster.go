@@ -288,8 +288,8 @@ func resourceRancherClusterCreate(d *schema.ResourceData, m interface{}) error {
 		if len(clustDom) > 0 {
 			configurationObject.ClusterDomain = &clustDom
 		}
-		if d.Get("certificates") != nil && len(d.Get("certificates").([]interface{})) > 0 {
-			certificates := d.Get("certificates").([]interface{})[0]
+		if configurationItem["certificates"] != nil && len(configurationItem["certificates"].([]interface{})) > 0 {
+			certificates := configurationItem["certificates"].([]interface{})[0]
 			certificatesItem := certificates.(map[string]interface{})
 
 			caCert := certificatesItem["ca_certificate"].(string)
