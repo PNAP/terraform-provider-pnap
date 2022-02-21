@@ -48,9 +48,9 @@ The following arguments are supported:
     * `node_count` - Number of configured nodes. Currently only node counts of 1 and 3 are possible.
     * `server_type` - Node server type. Default value is "s0.d1.small". For a full list of allowed values visit [API docs](https://developers.phoenixnap.com/docs/rancher/1)
     * `ssh_config` - (Write-only) Configuration defining which public SSH keys are pre-installed as authorized on the server. The `ssh_config` block has 3 fields.
-        * `install_default-keys` - Define whether public keys marked as default should be installed on this node. Default value is true.
+        * `install_default_keys` - Define whether public keys marked as default should be installed on this node. Default value is true.
         * `keys` - List of public SSH keys.
-        * `key-ids` - List of public SSH key identifiers.
+        * `key_ids` - List of public SSH key identifiers.
 * `configuration` - (Write-only) Rancher configuration parameters. The `configuration` block has 7 fields.
     * `token` - Shared secret used to join a server or agent to a cluster.
     * `tls_san` - This maps to rancher's tls-san. Add additional hostname or IP as a Subject Alternative Name in the TLS cert.
@@ -78,9 +78,9 @@ The following attributes are exported:
     * `node_count` - Number of configured nodes.
     * `server_type` - Node server type. Default value is "s0.d1.small". 
     * `ssh_config` - Configuration defining which public SSH keys are pre-installed as authorized on the server.
-        * `install_default-keys` - Define whether public keys marked as default should be installed on this node. Default value is true.
+        * `install_default_keys` - Define whether public keys marked as default should be installed on this node. Default value is true.
         * `keys` - List of public SSH keys.
-        * `key-ids` - List of public SSH key identifiers.       
+        * `key_ids` - List of public SSH key identifiers.       
     * `nodes` - The nodes associated with this node pool.            
         * `server_id` - The server identifier.
 * `metadata` - Connection parameters to use to connect to the Rancher Server Administrative GUI.
