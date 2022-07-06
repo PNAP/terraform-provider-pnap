@@ -174,8 +174,9 @@ func resourceIpBlockRead(d *schema.ResourceData, m interface{}) error {
 		d.Set("description", "")
 	}
 	if resp.Tags != nil && len(*resp.Tags) > 0 {
+		tagsRead := *resp.Tags
 		var tagsInput = d.Get("tags").([]interface{})
-		tags := flattenTags(resp.Tags, tagsInput)
+		tags := flattenTags(tagsRead, tagsInput)
 		if err := d.Set("tags", tags); err != nil {
 			return err
 		}
@@ -251,30 +252,79 @@ func resourceIpBlockDelete(d *schema.ResourceData, m interface{}) error {
 	return nil
 }
 
-func flattenTags(tagsRead *[]ipapiclient.TagAssignment, tagsInput []interface{}) []interface{} {
-	if len(tagsInput) == 0 {
-		tagsInput = make([]interface{}, 1)
-		tagsInputItem := make(map[string]interface{})
-		tagsInput[0] = tagsInputItem
-	}
-	if len(tagsInput) > 0 {
-		tags := *tagsRead
-		for _, j := range tagsInput {
-			tagsInputItem := j.(map[string]interface{})
-			if tagsInputItem["tag_assignment"] != nil && len(tagsInputItem["tag_assignment"].([]interface{})) > 0 {
-				tagAssign := tagsInputItem["tag_assignment"].([]interface{})[0]
-				tagAssignItem := tagAssign.(map[string]interface{})
-				nameInput := tagAssignItem["name"].(string)
-				for _, l := range tags {
-					if nameInput == l.Name {
-						tagAssignItem["id"] = l.Id
-						tagAssignItem["value"] = l.Value
-						tagAssignItem["is_billing_tag"] = l.IsBillingTag
-						tagAssignItem["created_by"] = l.CreatedBy
+func flattenTags(tagsRead []ipapiclient.TagAssignment, tagsInput []interface{}) []interface{} {
+	if len(tagsRead) > 0 {
+		var tags []interface{}
+		if len(tagsInput) == 0 || tagsInput[0] == nil {
+			for _, j := range tagsRead {
+				tagsItem := make(map[string]interface{})
+				ta := make([]interface{}, 1)
+				taItem := make(map[string]interface{})
+
+				taItem["id"] = j.Id
+				taItem["name"] = j.Name
+				if j.Value != nil {
+					taItem["value"] = *j.Value
+				}
+				taItem["is_billing_tag"] = j.IsBillingTag
+				if j.CreatedBy != nil {
+					taItem["created_by"] = *j.CreatedBy
+				}
+				ta[0] = taItem
+				tagsItem["tag_assignment"] = ta
+				tags = append(tags, tagsItem)
+			}
+		} else if len(tagsInput) > 0 {
+			for i := range tagsInput {
+				for _, j := range tagsRead {
+					if tagsInput[i].(map[string]interface{})["tag_assignment"].([]interface{})[0].(map[string]interface{})["name"] == j.Name {
+						tagsItem := make(map[string]interface{})
+						ta := make([]interface{}, 1)
+						taItem := make(map[string]interface{})
+
+						taItem["id"] = j.Id
+						taItem["name"] = j.Name
+						if j.Value != nil {
+							taItem["value"] = *j.Value
+						}
+						taItem["is_billing_tag"] = j.IsBillingTag
+						if j.CreatedBy != nil {
+							taItem["created_by"] = *j.CreatedBy
+						}
+						ta[0] = taItem
+						tagsItem["tag_assignment"] = ta
+						tags = append(tags, tagsItem)
 					}
 				}
 			}
+			for _, p := range tagsRead {
+				var newTag = true
+				for r := range tags {
+					if p.Name == tags[r].(map[string]interface{})["tag_assignment"].([]interface{})[0].(map[string]interface{})["name"] {
+						newTag = false
+					}
+				}
+				if newTag {
+					tagsItem := make(map[string]interface{})
+					ta := make([]interface{}, 1)
+					taItem := make(map[string]interface{})
+
+					taItem["id"] = p.Id
+					taItem["name"] = p.Name
+					if p.Value != nil {
+						taItem["value"] = *p.Value
+					}
+					taItem["is_billing_tag"] = p.IsBillingTag
+					if p.CreatedBy != nil {
+						taItem["created_by"] = *p.CreatedBy
+					}
+					ta[0] = taItem
+					tagsItem["tag_assignment"] = ta
+					tags = append(tags, tagsItem)
+				}
+			}
 		}
+		return tags
 	}
-	return tagsInput
+	return make([]interface{}, 0)
 }
