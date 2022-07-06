@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 
 	"github.com/PNAP/go-sdk-helper-bmc/command/bmcapi/server"
+	"github.com/PNAP/go-sdk-helper-bmc/command/ipapi/ipblock"
 	"github.com/PNAP/go-sdk-helper-bmc/receiver"
 
 	bmcapiclient "github.com/phoenixnap/go-sdk-bmc/bmcapi"
@@ -221,27 +222,24 @@ func resourceServer() *schema.Resource {
 							MaxItems: 1,
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
-									"gateway_address": { //Deprecated
-										Type:     schema.TypeString,
-										Optional: true,
-										Computed: true,
+									"gateway_address": {
+										Type:       schema.TypeString,
+										Optional:   true,
+										Computed:   true,
+										Deprecated: "Deprecated in favour of a common gateway address across all networks available under network_configuration",
 									},
 									"configuration_type": {
 										Type:     schema.TypeString,
-										Computed: true,
-										Optional: true,
-										Default:  nil,
+										Required: true,
 									},
 									"private_networks": {
 										Type:     schema.TypeList,
-										Computed: true,
-										Optional: true,
+										Required: true,
 										Elem: &schema.Resource{
 											Schema: map[string]*schema.Schema{
 												"server_private_network": {
 													Type:     schema.TypeList,
-													Optional: true,
-													Computed: true,
+													Required: true,
 													MaxItems: 1,
 													Elem: &schema.Resource{
 														Schema: map[string]*schema.Schema{
@@ -283,19 +281,16 @@ func resourceServer() *schema.Resource {
 								Schema: map[string]*schema.Schema{
 									"configuration_type": {
 										Type:     schema.TypeString,
-										Computed: true,
-										Optional: true,
+										Required: true,
 									},
 									"ip_blocks": {
 										Type:     schema.TypeList,
-										Optional: true,
-										Computed: true,
+										Required: true,
 										Elem: &schema.Resource{
 											Schema: map[string]*schema.Schema{
 												"server_ip_block": {
 													Type:     schema.TypeList,
-													Optional: true,
-													Computed: true,
+													Required: true,
 													MaxItems: 1,
 													Elem: &schema.Resource{
 														Schema: map[string]*schema.Schema{
@@ -314,6 +309,11 @@ func resourceServer() *schema.Resource {
 											},
 										},
 									},
+									"relinquish_ip_blocks": {
+										Type:     schema.TypeBool,
+										Optional: true,
+										Default:  false,
+									},
 								},
 							},
 						},
@@ -326,14 +326,12 @@ func resourceServer() *schema.Resource {
 								Schema: map[string]*schema.Schema{
 									"public_networks": {
 										Type:     schema.TypeList,
-										Computed: true,
-										Optional: true,
+										Required: true,
 										Elem: &schema.Resource{
 											Schema: map[string]*schema.Schema{
 												"server_public_network": {
 													Type:     schema.TypeList,
-													Optional: true,
-													Computed: true,
+													Required: true,
 													MaxItems: 1,
 													Elem: &schema.Resource{
 														Schema: map[string]*schema.Schema{
@@ -684,8 +682,9 @@ func resourceServerRead(d *schema.ResourceData, m interface{}) error {
 	}
 
 	if resp.Tags != nil && len(*resp.Tags) > 0 {
+		tagsRead := *resp.Tags
 		var tagsInput = d.Get("tags").([]interface{})
-		tags := flattenServerTags(resp.Tags, tagsInput)
+		tags := flattenServerTags(tagsRead, tagsInput)
 		if err := d.Set("tags", tags); err != nil {
 			return err
 		}
@@ -877,46 +876,345 @@ func resourceServerUpdate(d *schema.ResourceData, m interface{}) error {
 		if err != nil {
 			return err
 		}
+
+	} else if d.HasChange("network_configuration") {
+		client := m.(receiver.BMCSDK)
+		serverID := d.Id()
+		requestCommand := server.NewGetServerCommand(client, serverID)
+		resp, err := requestCommand.Execute()
+		if err != nil {
+			return err
+		}
+		netConf := resp.NetworkConfiguration
+
+		var ipBlocks = []bmcapiclient.ServerIpBlock{}
+		if netConf.IpBlocksConfiguration != nil {
+			ipBlocksConf := *netConf.IpBlocksConfiguration
+			if ipBlocksConf.IpBlocks != nil {
+				ipBlocks = *ipBlocksConf.IpBlocks
+			}
+		}
+		var privateNetworks = []bmcapiclient.ServerPrivateNetwork{}
+		if netConf.PrivateNetworkConfiguration != nil {
+			privateNetConf := *netConf.PrivateNetworkConfiguration
+			if privateNetConf.PrivateNetworks != nil {
+				privateNetworks = *privateNetConf.PrivateNetworks
+			}
+		}
+		var publicNetworks = []bmcapiclient.ServerPublicNetwork{}
+		if netConf.PublicNetworkConfiguration != nil {
+			publicNetConf := *netConf.PublicNetworkConfiguration
+			if publicNetConf.PublicNetworks != nil {
+				publicNetworks = *publicNetConf.PublicNetworks
+			}
+		}
+		var ncInput = d.Get("network_configuration").([]interface{})
+		var deleteIpBlocks = false
+
+		var ipBlocksInput []interface{}
+		var privateNetworksInput []interface{}
+		var publicNetworksInput []interface{}
+
+		if len(ncInput) > 0 {
+			nci := ncInput[0]
+			nciMap := nci.(map[string]interface{})
+			ibc := nciMap["ip_blocks_configuration"]
+			if ibc != nil && len(ibc.([]interface{})) > 0 {
+				ibci := ibc.([]interface{})[0]
+				ibcInput := ibci.(map[string]interface{})
+				if ibcInput["ip_blocks"] != nil && len(ibcInput["ip_blocks"].([]interface{})) > 0 {
+					ipBlocksInput = ibcInput["ip_blocks"].([]interface{})
+				}
+				if ibcInput["relinquish_ip_blocks"].(bool) {
+					deleteIpBlocks = true
+				}
+			}
+			privnc := nciMap["private_network_configuration"]
+			if privnc != nil && len(privnc.([]interface{})) > 0 {
+				privnci := privnc.([]interface{})[0]
+				privncInput := privnci.(map[string]interface{})
+				if privncInput["private_networks"] != nil && len(privncInput["private_networks"].([]interface{})) > 0 {
+					privateNetworksInput = privncInput["private_networks"].([]interface{})
+				}
+			}
+			pubnc := nciMap["public_network_configuration"]
+			if pubnc != nil && len(pubnc.([]interface{})) > 0 {
+				pubnci := pubnc.([]interface{})[0]
+				pubncInput := pubnci.(map[string]interface{})
+				if pubncInput["public_networks"] != nil && len(pubncInput["public_networks"].([]interface{})) > 0 {
+					publicNetworksInput = pubncInput["public_networks"].([]interface{})
+				}
+			}
+		}
+		var sameIpBlocks []interface{}
+
+		if len(ipBlocks) > 0 && len(ipBlocksInput) > 0 {
+			for _, j := range ipBlocks {
+				id := j.Id
+				for _, l := range ipBlocksInput {
+					ipbsInputItem := l.(map[string]interface{})
+					if ipbsInputItem["server_ip_block"] != nil && len(ipbsInputItem["server_ip_block"].([]interface{})) > 0 {
+						sibInput := ipbsInputItem["server_ip_block"].([]interface{})[0]
+						sibInputItem := sibInput.(map[string]interface{})
+						idInput := sibInputItem["id"].(string)
+						if id == idInput {
+							sameIpBlocks = append(sameIpBlocks, id)
+						}
+					}
+				}
+			}
+		}
+		if len(ipBlocks) > len(sameIpBlocks) {
+			for _, j := range ipBlocks {
+				ipBlockID := j.Id
+				var same = false
+				for _, l := range sameIpBlocks {
+					if ipBlockID == l {
+						same = true
+					}
+				}
+				if !same {
+					relinquishIpBlock := bmcapiclient.RelinquishIpBlock{}
+					relinquishIpBlock.DeleteIpBlocks = &deleteIpBlocks
+
+					requestCommand := server.NewRemoveIpBlockCommand(client, serverID, ipBlockID, relinquishIpBlock)
+					_, err := requestCommand.Execute()
+					if err != nil {
+						return err
+					}
+					if deleteIpBlocks {
+						time.Sleep(time.Minute)
+					} else {
+						waitResultError := ipBlockWaitForUnassign(ipBlockID, &client)
+						if waitResultError != nil {
+							return waitResultError
+						}
+					}
+				}
+			}
+		}
+		if len(ipBlocksInput) > len(sameIpBlocks) {
+			for _, l := range ipBlocksInput {
+				ipbsInputItem := l.(map[string]interface{})
+				if ipbsInputItem["server_ip_block"] != nil && len(ipbsInputItem["server_ip_block"].([]interface{})) > 0 {
+					sibInput := ipbsInputItem["server_ip_block"].([]interface{})[0]
+					sibInputItem := sibInput.(map[string]interface{})
+					idInput := sibInputItem["id"].(string)
+					vlanId := int32(sibInputItem["vlan_id"].(int))
+
+					var same = false
+					for _, l := range sameIpBlocks {
+						if idInput == l {
+							same = true
+						}
+					}
+					if !same {
+						sibObject := bmcapiclient.ServerIpBlock{}
+						sibObject.Id = idInput
+						sibObject.VlanId = &vlanId
+						request := &sibObject
+						requestCommand := server.NewAddIpBlockCommand(client, serverID, *request)
+						_, err := requestCommand.Execute()
+						if err != nil {
+							return err
+						}
+						waitResultError := ipBlockWaitForAssign(idInput, &client)
+						if waitResultError != nil {
+							return waitResultError
+						}
+					}
+				}
+			}
+		}
+		var samePrivateNetworks []interface{}
+
+		if len(privateNetworks) > 0 && len(privateNetworksInput) > 0 {
+			for _, j := range privateNetworks {
+				id := j.Id
+				for _, l := range privateNetworksInput {
+					privateNetworksInputItem := l.(map[string]interface{})
+					if privateNetworksInputItem["server_private_network"] != nil && len(privateNetworksInputItem["server_private_network"].([]interface{})) > 0 {
+						spnInput := privateNetworksInputItem["server_private_network"].([]interface{})[0]
+						spnInputItem := spnInput.(map[string]interface{})
+						idInput := spnInputItem["id"].(string)
+						if id == idInput {
+							samePrivateNetworks = append(samePrivateNetworks, id)
+						}
+					}
+				}
+			}
+		}
+		if len(privateNetworks) > len(samePrivateNetworks) {
+			for _, j := range privateNetworks {
+				privateNetworkID := j.Id
+				var same = false
+				for _, l := range samePrivateNetworks {
+					if privateNetworkID == l {
+						same = true
+					}
+				}
+				if !same {
+					requestCommand := server.NewDeleteServerPrivateNetworkCommand(client, serverID, privateNetworkID)
+					_, err := requestCommand.Execute()
+					if err != nil {
+						return err
+					}
+				}
+			}
+		}
+		if len(privateNetworksInput) > len(samePrivateNetworks) {
+			for _, l := range privateNetworksInput {
+				privateNetworksInputItem := l.(map[string]interface{})
+				if privateNetworksInputItem["server_private_network"] != nil && len(privateNetworksInputItem["server_private_network"].([]interface{})) > 0 {
+					spnInput := privateNetworksInputItem["server_private_network"].([]interface{})[0]
+					spnInputItem := spnInput.(map[string]interface{})
+					idInput := spnInputItem["id"].(string)
+					var same = false
+					for _, l := range samePrivateNetworks {
+						if idInput == l {
+							same = true
+						}
+					}
+					if !same {
+						spnObject := bmcapiclient.ServerPrivateNetwork{}
+						spnObject.Id = idInput
+
+						tempIps := spnInputItem["ips"].(*schema.Set).List()
+						netIps := make([]string, len(tempIps))
+						for i, v := range tempIps {
+							netIps[i] = fmt.Sprint(v)
+						}
+						if (len(netIps)) > 0 {
+							spnObject.Ips = &netIps
+						}
+
+						dhcp := spnInputItem["dhcp"].(bool)
+						spnObject.Dhcp = &dhcp
+
+						request := &spnObject
+						requestCommand := server.NewAddServer2PrivateNetworkCommand(client, serverID, *request)
+						_, err := requestCommand.Execute()
+						if err != nil {
+							return err
+						}
+					}
+				}
+			}
+		}
+		var samePublicNetworks []interface{}
+
+		if len(publicNetworks) > 0 && len(publicNetworksInput) > 0 {
+			for _, j := range publicNetworks {
+				id := j.Id
+				for _, l := range publicNetworksInput {
+					publicNetworksInputItem := l.(map[string]interface{})
+					if publicNetworksInputItem["server_public_network"] != nil && len(publicNetworksInputItem["server_public_network"].([]interface{})) > 0 {
+						spnInput := publicNetworksInputItem["server_public_network"].([]interface{})[0]
+						spnInputItem := spnInput.(map[string]interface{})
+						idInput := spnInputItem["id"].(string)
+						if id == idInput {
+							samePublicNetworks = append(samePublicNetworks, id)
+						}
+					}
+				}
+			}
+		}
+		if len(publicNetworks) > len(samePublicNetworks) {
+			for _, j := range publicNetworks {
+				publicNetworkID := j.Id
+				var same = false
+				for _, l := range samePublicNetworks {
+					if publicNetworkID == l {
+						same = true
+					}
+				}
+				if !same {
+					requestCommand := server.NewDeleteServerPublicNetworkCommand(client, serverID, publicNetworkID)
+					_, err := requestCommand.Execute()
+					if err != nil {
+						return err
+					}
+				}
+			}
+		}
+		if len(publicNetworksInput) > len(samePublicNetworks) {
+			for _, l := range publicNetworksInput {
+				publicNetworksInputItem := l.(map[string]interface{})
+				if publicNetworksInputItem["server_public_network"] != nil && len(publicNetworksInputItem["server_public_network"].([]interface{})) > 0 {
+					spnInput := publicNetworksInputItem["server_public_network"].([]interface{})[0]
+					spnInputItem := spnInput.(map[string]interface{})
+					idInput := spnInputItem["id"].(string)
+					var same = false
+					for _, l := range samePublicNetworks {
+						if idInput == l {
+							same = true
+						}
+					}
+					if !same {
+						spnObject := bmcapiclient.ServerPublicNetwork{}
+						spnObject.Id = idInput
+
+						tempIps := spnInputItem["ips"].(*schema.Set).List()
+						netIps := make([]string, len(tempIps))
+						for i, v := range tempIps {
+							netIps[i] = fmt.Sprint(v)
+						}
+						if (len(netIps)) > 0 {
+							spnObject.Ips = netIps
+						}
+						request := &spnObject
+
+						requestCommand := server.NewAddServer2PublicNetworkCommand(client, serverID, *request)
+						_, err := requestCommand.Execute()
+						if err != nil {
+							return err
+						}
+					}
+				}
+			}
+		}
 	} else {
 		return fmt.Errorf("unsupported action")
 	}
 	return resourceServerRead(d, m)
-
 }
 
 func resourceServerDelete(d *schema.ResourceData, m interface{}) error {
 	client := m.(receiver.BMCSDK)
 	serverID := d.Id()
-
-	var deleteIpBlocks = false
 	var ncInput = d.Get("network_configuration").([]interface{})
-	if len(ncInput) == 0 {
-		deleteIpBlocks = true
-	} else if len(ncInput) > 0 {
+	var ibConfigurationType string
+	var relinquishIpBlocks = false
+	if len(ncInput) > 0 {
 		nci := ncInput[0]
 		nciMap := nci.(map[string]interface{})
 		ibc := nciMap["ip_blocks_configuration"]
-		if ibc == nil || len(ibc.([]interface{})) == 0 {
-			deleteIpBlocks = true
-		} else if ibc != nil && len(ibc.([]interface{})) > 0 {
+		if ibc != nil && len(ibc.([]interface{})) > 0 {
 			ibci := ibc.([]interface{})[0]
 			ibcInput := ibci.(map[string]interface{})
-			if ibcInput["ip_blocks"] == nil || len(ibcInput["ip_blocks"].([]interface{})) == 0 {
-				deleteIpBlocks = true
+			if ibcInput["configuration_type"] != nil && len(ibcInput["configuration_type"].(string)) > 0 {
+				ibConfigurationType = ibcInput["configuration_type"].(string)
 			}
+			relinquishIpBlocks = ibcInput["relinquish_ip_blocks"].(bool)
 		}
+	}
+	var deleteIpBlocks = true
+	if ibConfigurationType == "USER_DEFINED" {
+		deleteIpBlocks = false
+	}
+	if relinquishIpBlocks {
+		deleteIpBlocks = true
 	}
 	relinquishIpBlock := bmcapiclient.RelinquishIpBlock{}
 	relinquishIpBlock.DeleteIpBlocks = &deleteIpBlocks
 	b, _ := json.MarshalIndent(relinquishIpBlock, "", "  ")
 	log.Printf("relinquishIpBlock object is" + string(b))
-	requestCommand := server.NewDeprovisionServerCommand(client, serverID, relinquishIpBlock)
 
+	requestCommand := server.NewDeprovisionServerCommand(client, serverID, relinquishIpBlock)
 	_, err := requestCommand.Execute()
 	if err != nil {
 		return err
 	}
-
 	return nil
 }
 
@@ -994,8 +1292,62 @@ func refreshForCreate(client *receiver.BMCSDK, id string) resource.StateRefreshF
 	}
 }
 
+func ipBlockWaitForUnassign(id string, client *receiver.BMCSDK) error {
+	log.Printf("Waiting for ip block %s to be unassigned...", id)
+
+	stateConf := &resource.StateChangeConf{
+		Pending:    []string{"assigned", "unassigning"},
+		Target:     []string{"unassigned"},
+		Refresh:    refreshForIpBlockStatus(client, id),
+		Timeout:    pnapRetryTimeout,
+		Delay:      pnapRetryDelay,
+		MinTimeout: pnapRetryMinTimeout,
+	}
+
+	_, err := stateConf.WaitForState()
+	if err != nil {
+		return fmt.Errorf("error waiting for ip block (%s) to be unassigned: %v", id, err)
+	}
+
+	return nil
+}
+
+func ipBlockWaitForAssign(id string, client *receiver.BMCSDK) error {
+	log.Printf("Waiting for ip block %s to be unassigned...", id)
+
+	stateConf := &resource.StateChangeConf{
+		Pending:    []string{"unassigned", "assigning"},
+		Target:     []string{"assigned"},
+		Refresh:    refreshForIpBlockStatus(client, id),
+		Timeout:    pnapRetryTimeout,
+		Delay:      pnapRetryDelay,
+		MinTimeout: pnapRetryMinTimeout,
+	}
+
+	_, err := stateConf.WaitForState()
+	if err != nil {
+		return fmt.Errorf("error waiting for ip block (%s) to be assigned: %v", id, err)
+	}
+
+	return nil
+}
+
+func refreshForIpBlockStatus(client *receiver.BMCSDK, id string) resource.StateRefreshFunc {
+	return func() (interface{}, string, error) {
+
+		requestCommand := ipblock.NewGetIpBlockCommand(*client, id)
+
+		resp, err := requestCommand.Execute()
+		if err != nil {
+			return 0, "", err
+		} else {
+			return 0, resp.Status, nil
+		}
+	}
+}
+
 func flattenNetworkConfiguration(netConf *bmcapiclient.NetworkConfiguration, ncInput []interface{}) []interface{} {
-	if netConf != nil { //len(ncInput)
+	if netConf != nil {
 		if len(ncInput) == 0 {
 			ncInput = make([]interface{}, 1)
 			n := make(map[string]interface{})
@@ -1004,189 +1356,428 @@ func flattenNetworkConfiguration(netConf *bmcapiclient.NetworkConfiguration, ncI
 		nci := ncInput[0]
 		nciMap := nci.(map[string]interface{})
 
-		if netConf != nil {
-			if netConf.GatewayAddress != nil {
-				nciMap["gateway_address"] = *netConf.GatewayAddress
-			}
-			if netConf.PrivateNetworkConfiguration != nil {
-				prNetConf := *netConf.PrivateNetworkConfiguration
-				//pnc := make([]interface{}, 1)
-				var pnc []interface{}
-				if (nciMap["private_network_configuration"]) != nil && len(nciMap["private_network_configuration"].([]interface{})) > 0 {
-					pnc = nciMap["private_network_configuration"].([]interface{})
-				} else {
-					pnc = make([]interface{}, 1)
-				}
-				//pncItem := make(map[string]interface{})
-				var pncItem map[string]interface{}
-				if len(pnc) > 0 && pnc[0] != nil {
-					pncItem = pnc[0].(map[string]interface{})
-				} else {
-					pncItem = make(map[string]interface{})
-				}
-				if prNetConf.GatewayAddress != nil {
-					pncItem["gateway_adress"] = *prNetConf.GatewayAddress
-				}
-				if prNetConf.ConfigurationType != nil && len(*prNetConf.ConfigurationType) > 0 {
-					pncItem["configuration_type"] = *prNetConf.ConfigurationType
-				}
-				if prNetConf.PrivateNetworks != nil {
-					prNet := *prNetConf.PrivateNetworks
-					//pn := make([]interface{}, len(prNet))
-					var pn []interface{}
-					var pnetworksExists = false
-					if pncItem["private_networks"] != nil {
-						pn = pncItem["private_networks"].([]interface{})
-						pnetworksExists = true
-					} else {
-						pn = make([]interface{}, len(prNet))
-						pnetworksExists = false
-					}
-					for i, j := range prNet {
-						for k, _ := range pn {
-							if !pnetworksExists || pn[k].(map[string]interface{})["server_private_network"].([]interface{})[0].(map[string]interface{})["id"] == j.Id {
-
-								var pnItem map[string]interface{}
-								var spn []interface{}
-								var spnItem map[string]interface{}
-
-								if !pnetworksExists {
-									pnItem = make(map[string]interface{})
-									spn = make([]interface{}, 1)
-									spnItem = make(map[string]interface{})
-								} else {
-									//pnItem := make(map[string]interface{})
-									pnItem = pn[k].(map[string]interface{})
-
-									//spn := make([]interface{}, 1)
-									spn = pnItem["server_private_network"].([]interface{})
-									//spnItem := make(map[string]interface{})
-									spnItem = spn[0].(map[string]interface{})
-								}
-
-								spnItem["id"] = j.Id
-								if j.Ips != nil {
-									ips := make([]interface{}, len(*j.Ips))
-									for k, l := range *j.Ips {
-										ips[k] = l
-									}
-									spnItem["ips"] = ips
-								}
-								if j.Dhcp != nil {
-									spnItem["dhcp"] = *j.Dhcp
-								}
-								if j.StatusDescription != nil {
-									spnItem["status_description"] = *j.StatusDescription
-								}
-								if !pnetworksExists {
-									spn[0] = spnItem
-									pnItem["server_private_network"] = spn
-									pn[i] = pnItem
-								}
-							}
-							if !pnetworksExists {
-								break
-							}
-						}
-					}
-					pncItem["private_networks"] = pn
-				}
-				pnc[0] = pncItem
-				nciMap["private_network_configuration"] = pnc
-			}
-			if netConf.IpBlocksConfiguration != nil {
-				ipBlocksConf := *netConf.IpBlocksConfiguration
-				if ipBlocksConf.IpBlocks != nil {
-					ibc := nciMap["ip_blocks_configuration"]
-					if ibc == nil || len(ibc.([]interface{})) == 0 {
-						ibc = make([]interface{}, 1)
-						ibci := make(map[string]interface{})
-						ibc.([]interface{})[0] = ibci
-					}
-
-					ibci := ibc.([]interface{})[0]
-					ibcInput := ibci.(map[string]interface{})
-
-					ipBlocks := *ipBlocksConf.IpBlocks
-					ib := make([]interface{}, len(ipBlocks))
-					for i, j := range ipBlocks {
-						ibItem := make(map[string]interface{})
-						sib := make([]interface{}, 1)
-						sibItem := make(map[string]interface{})
-
-						sibItem["id"] = j.Id
-						if j.VlanId != nil {
-							sibItem["vlan_id"] = *j.VlanId
-						}
-						sib[0] = sibItem
-						ibItem["server_ip_block"] = sib
-						ib[i] = ibItem
-					}
-					ibcInput["ip_blocks"] = ib
-				}
-			}
-			if netConf.PublicNetworkConfiguration != nil {
-				pubNetConf := *netConf.PublicNetworkConfiguration
-				if pubNetConf.PublicNetworks != nil {
-					pubnc := nciMap["public_network_configuration"]
-					if pubnc == nil || len(pubnc.([]interface{})) == 0 {
-						pubnc = make([]interface{}, 1)
-						pubnci := make(map[string]interface{})
-						pubnc.([]interface{})[0] = pubnci
-					}
-
-					pubnci := pubnc.([]interface{})[0]
-					pubncInput := pubnci.(map[string]interface{})
-
-					pubNets := *pubNetConf.PublicNetworks
-					if pubncInput["public_networks"] != nil && len(pubncInput["public_networks"].([]interface{})) > 0 {
-						pubNetInput := pubncInput["public_networks"].([]interface{})
-						for _, j := range pubNetInput {
-							pubNetInputItem := j.(map[string]interface{})
-							serPubNet := pubNetInputItem["server_public_network"].([]interface{})[0]
-							serPubNetItem := serPubNet.(map[string]interface{})
-							id := serPubNetItem["id"].(string)
-							for _, l := range pubNets {
-								if id == l.Id {
-									if l.StatusDescription != nil {
-										serPubNetItem["status_description"] = *l.StatusDescription
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-			//return ncInput
+		if netConf.GatewayAddress != nil {
+			nciMap["gateway_address"] = *netConf.GatewayAddress
 		}
+		prNetConfA := netConf.PrivateNetworkConfiguration
+		if prNetConfA != nil && *prNetConfA.PrivateNetworks != nil && len(*prNetConfA.PrivateNetworks) > 0 {
+			prNetConf := *netConf.PrivateNetworkConfiguration
+			//pnc := make([]interface{}, 1)
+			var pnc []interface{}
+			if (nciMap["private_network_configuration"]) != nil && len(nciMap["private_network_configuration"].([]interface{})) > 0 {
+				pnc = nciMap["private_network_configuration"].([]interface{})
+			} else {
+				pnc = make([]interface{}, 1)
+			}
+			//pncItem := make(map[string]interface{})
+			var pncItem map[string]interface{}
+			if len(pnc) > 0 && pnc[0] != nil {
+				pncItem = pnc[0].(map[string]interface{})
+			} else {
+				pncItem = make(map[string]interface{})
+			}
+			if prNetConf.GatewayAddress != nil {
+				pncItem["gateway_adress"] = *prNetConf.GatewayAddress
+			}
+			if prNetConf.ConfigurationType != nil && len(*prNetConf.ConfigurationType) > 0 {
+				pncItem["configuration_type"] = *prNetConf.ConfigurationType
+			}
+			if prNetConf.PrivateNetworks != nil {
+				prNet := *prNetConf.PrivateNetworks
+				var pn []interface{}
+				if pncItem["private_networks"] != nil {
+					pn = pncItem["private_networks"].([]interface{})
+				} else {
+					pn = make([]interface{}, len(prNet))
+				}
+				privateNetworks := sortPrivateNetworks(prNet, pn)
+				pncItem["private_networks"] = privateNetworks
+			}
+			pnc[0] = pncItem
+			nciMap["private_network_configuration"] = pnc
+		} else {
+			nciMap["private_network_configuration"] = make([]interface{}, 0)
+		}
+		ipBlocksConfA := netConf.IpBlocksConfiguration
+		if ipBlocksConfA != nil && *ipBlocksConfA.IpBlocks != nil && len(*ipBlocksConfA.IpBlocks) > 0 {
+			ipBlocksConf := *netConf.IpBlocksConfiguration
+			var ibc []interface{}
+			if (nciMap["ip_blocks_configuration"]) != nil && len(nciMap["ip_blocks_configuration"].([]interface{})) > 0 {
+				ibc = nciMap["ip_blocks_configuration"].([]interface{})
+			} else {
+				ibc = make([]interface{}, 1)
+			}
+			var ibcItem map[string]interface{}
+			if len(ibc) > 0 && ibc[0] != nil {
+				ibcItem = ibc[0].(map[string]interface{})
+			} else {
+				ibcItem = make(map[string]interface{})
+			}
+			if ipBlocksConf.ConfigurationType != nil && len(*ipBlocksConf.ConfigurationType) > 0 {
+				ibcItem["configuration_type"] = *ipBlocksConf.ConfigurationType
+			}
+			if ipBlocksConf.IpBlocks != nil {
+				ipBloc := *ipBlocksConf.IpBlocks
+				var ib []interface{}
+				if ibcItem["ip_blocks"] != nil {
+					ib = ibcItem["ip_blocks"].([]interface{})
+				} else {
+					ib = make([]interface{}, len(ipBloc))
+				}
+				ipBlocks := sortIpBlocks(ipBloc, ib)
+				ibcItem["ip_blocks"] = ipBlocks
+			}
+			ibc[0] = ibcItem
+			nciMap["ip_blocks_configuration"] = ibc
+		} else {
+			nciMap["ip_blocks_configuration"] = make([]interface{}, 0)
+		}
+		puNetConfA := netConf.PublicNetworkConfiguration
+		if puNetConfA != nil && *puNetConfA.PublicNetworks != nil && len(*puNetConfA.PublicNetworks) > 0 {
+			puNetConf := *netConf.PublicNetworkConfiguration
+			var pnc []interface{}
+			if (nciMap["public_network_configuration"]) != nil && len(nciMap["public_network_configuration"].([]interface{})) > 0 {
+				pnc = nciMap["public_network_configuration"].([]interface{})
+			} else {
+				pnc = make([]interface{}, 1)
+			}
+			var pncItem map[string]interface{}
+			if len(pnc) > 0 && pnc[0] != nil {
+				pncItem = pnc[0].(map[string]interface{})
+			} else {
+				pncItem = make(map[string]interface{})
+			}
+			if puNetConf.PublicNetworks != nil {
+				puNet := *puNetConf.PublicNetworks
+				var pn []interface{}
+				if pncItem["public_networks"] != nil {
+					pn = pncItem["public_networks"].([]interface{})
+				} else {
+					pn = make([]interface{}, len(puNet))
+				}
+				publicNetworks := sortPublicNetworks(puNet, pn)
+				pncItem["public_networks"] = publicNetworks
+			}
+			pnc[0] = pncItem
+			nciMap["public_network_configuration"] = pnc
+		} else {
+			nciMap["public_network_configuration"] = make([]interface{}, 0)
+		}
+		return ncInput
 	}
-	return ncInput
+	return make([]interface{}, 0)
 }
 
-func flattenServerTags(tagsRead *[]bmcapiclient.TagAssignment, tagsInput []interface{}) []interface{} {
-	if len(tagsInput) == 0 {
-		tagsInput = make([]interface{}, 1)
-		tagsInputItem := make(map[string]interface{})
-		tagsInput[0] = tagsInputItem
-	}
-	if len(tagsInput) > 0 {
-		tags := *tagsRead
-		for _, j := range tagsInput {
-			tagsInputItem := j.(map[string]interface{})
-			if tagsInputItem["tag_assignment"] != nil && len(tagsInputItem["tag_assignment"].([]interface{})) > 0 {
-				tagAssign := tagsInputItem["tag_assignment"].([]interface{})[0]
-				tagAssignItem := tagAssign.(map[string]interface{})
-				nameInput := tagAssignItem["name"].(string)
-				for _, l := range tags {
-					if nameInput == l.Name {
-						tagAssignItem["id"] = l.Id
-						tagAssignItem["value"] = l.Value
-						tagAssignItem["is_billing_tag"] = l.IsBillingTag
-						tagAssignItem["created_by"] = l.CreatedBy
+func sortPrivateNetworks(prNet []bmcapiclient.ServerPrivateNetwork, prNetInput []interface{}) []interface{} {
+	if len(prNet) > 0 {
+		var pn []interface{}
+		if len(prNetInput) == 0 || prNetInput[0] == nil {
+			for _, j := range prNet {
+				pnItem := make(map[string]interface{})
+				spn := make([]interface{}, 1)
+				spnItem := make(map[string]interface{})
+
+				spnItem["id"] = j.Id
+				if j.Ips != nil {
+					ips := make([]interface{}, len(*j.Ips))
+					for k, l := range *j.Ips {
+						ips[k] = l
+					}
+					spnItem["ips"] = ips
+				}
+				if j.Dhcp != nil {
+					spnItem["dhcp"] = *j.Dhcp
+				}
+				if j.StatusDescription != nil {
+					spnItem["status_description"] = *j.StatusDescription
+				}
+				spn[0] = spnItem
+				pnItem["server_private_network"] = spn
+				pn = append(pn, pnItem)
+			}
+		} else if len(prNetInput) > 0 {
+			for i := range prNetInput {
+				for _, j := range prNet {
+					if prNetInput[i].(map[string]interface{})["server_private_network"].([]interface{})[0].(map[string]interface{})["id"] == j.Id {
+						pnItem := make(map[string]interface{})
+						spn := make([]interface{}, 1)
+						spnItem := make(map[string]interface{})
+
+						spnItem["id"] = j.Id
+						if j.Ips != nil {
+							ips := make([]interface{}, len(*j.Ips))
+							for k, l := range *j.Ips {
+								ips[k] = l
+							}
+							spnItem["ips"] = ips
+						}
+						if j.Dhcp != nil {
+							spnItem["dhcp"] = *j.Dhcp
+						}
+						if j.StatusDescription != nil {
+							spnItem["status_description"] = *j.StatusDescription
+						}
+						spn[0] = spnItem
+						pnItem["server_private_network"] = spn
+						pn = append(pn, pnItem)
 					}
 				}
 			}
+			for _, p := range prNet {
+				var newPrivateNetwork = true
+				for r := range pn {
+					if p.Id == pn[r].(map[string]interface{})["server_private_network"].([]interface{})[0].(map[string]interface{})["id"] {
+						newPrivateNetwork = false
+					}
+				}
+				if newPrivateNetwork {
+					pnItem := make(map[string]interface{})
+					spn := make([]interface{}, 1)
+					spnItem := make(map[string]interface{})
+
+					spnItem["id"] = p.Id
+					if p.Ips != nil {
+						ips := make([]interface{}, len(*p.Ips))
+						for k, l := range *p.Ips {
+							ips[k] = l
+						}
+						spnItem["ips"] = ips
+					}
+					if p.Dhcp != nil {
+						spnItem["dhcp"] = *p.Dhcp
+					}
+					if p.StatusDescription != nil {
+						spnItem["status_description"] = *p.StatusDescription
+					}
+					spn[0] = spnItem
+					pnItem["server_private_network"] = spn
+					pn = append(pn, pnItem)
+				}
+			}
 		}
+		return pn
 	}
-	return tagsInput
+	return make([]interface{}, 0)
+}
+
+func sortIpBlocks(ipBlocks []bmcapiclient.ServerIpBlock, ibInput []interface{}) []interface{} {
+	if len(ipBlocks) > 0 {
+		var ipb []interface{}
+		if len(ibInput) == 0 || ibInput[0] == nil {
+			for _, j := range ipBlocks {
+				ipbItem := make(map[string]interface{})
+				sipb := make([]interface{}, 1)
+				sipbItem := make(map[string]interface{})
+
+				sipbItem["id"] = j.Id
+				if j.VlanId != nil {
+					sipbItem["vlan_id"] = int(*j.VlanId)
+				}
+				sipb[0] = sipbItem
+				ipbItem["server_ip_block"] = sipb
+				ipb = append(ipb, ipbItem)
+			}
+		} else if len(ibInput) > 0 {
+			for i := range ibInput {
+				for _, l := range ipBlocks {
+					if ibInput[i].(map[string]interface{})["server_ip_block"].([]interface{})[0].(map[string]interface{})["id"] == l.Id {
+						ipbItem := make(map[string]interface{})
+						sipb := make([]interface{}, 1)
+						sipbItem := make(map[string]interface{})
+
+						sipbItem["id"] = l.Id
+						if l.VlanId != nil {
+							sipbItem["vlan_id"] = int(*l.VlanId)
+						}
+						sipb[0] = sipbItem
+						ipbItem["server_ip_block"] = sipb
+						ipb = append(ipb, ipbItem)
+					}
+				}
+			}
+			for _, p := range ipBlocks {
+				var newIpBlock = true
+				for r := range ipb {
+					if p.Id == ipb[r].(map[string]interface{})["server_ip_block"].([]interface{})[0].(map[string]interface{})["id"] {
+						newIpBlock = false
+					}
+				}
+				if newIpBlock {
+					ipbItem := make(map[string]interface{})
+					sipb := make([]interface{}, 1)
+					sipbItem := make(map[string]interface{})
+
+					sipbItem["id"] = p.Id
+					if p.VlanId != nil {
+						sipbItem["vlan_id"] = int(*p.VlanId)
+					}
+					sipb[0] = sipbItem
+					ipbItem["server_ip_block"] = sipb
+					ipb = append(ipb, ipbItem)
+				}
+			}
+		}
+		return ipb
+	}
+	return make([]interface{}, 0)
+}
+
+func sortPublicNetworks(puNet []bmcapiclient.ServerPublicNetwork, puNetInput []interface{}) []interface{} {
+	if len(puNet) > 0 {
+		var pn []interface{}
+		if len(puNetInput) == 0 || puNetInput[0] == nil {
+			for _, j := range puNet {
+				pnItem := make(map[string]interface{})
+				spn := make([]interface{}, 1)
+				spnItem := make(map[string]interface{})
+
+				spnItem["id"] = j.Id
+				if j.Ips != nil {
+					ips := make([]interface{}, len(j.Ips))
+					for k, l := range j.Ips {
+						ips[k] = l
+					}
+					spnItem["ips"] = ips
+				}
+				if j.StatusDescription != nil {
+					spnItem["status_description"] = *j.StatusDescription
+				}
+				spn[0] = spnItem
+				pnItem["server_public_network"] = spn
+				pn = append(pn, pnItem)
+			}
+		} else if len(puNetInput) > 0 {
+			for i := range puNetInput {
+				for _, j := range puNet {
+					if puNetInput[i].(map[string]interface{})["server_public_network"].([]interface{})[0].(map[string]interface{})["id"] == j.Id {
+						pnItem := make(map[string]interface{})
+						spn := make([]interface{}, 1)
+						spnItem := make(map[string]interface{})
+
+						spnItem["id"] = j.Id
+						if j.Ips != nil {
+							ips := make([]interface{}, len(j.Ips))
+							for k, l := range j.Ips {
+								ips[k] = l
+							}
+							spnItem["ips"] = ips
+						}
+						if j.StatusDescription != nil {
+							spnItem["status_description"] = *j.StatusDescription
+						}
+						spn[0] = spnItem
+						pnItem["server_public_network"] = spn
+						pn = append(pn, pnItem)
+					}
+				}
+			}
+			for _, p := range puNet {
+				var newPublicNetwork = true
+				for r := range pn {
+					if p.Id == pn[r].(map[string]interface{})["server_public_network"].([]interface{})[0].(map[string]interface{})["id"] {
+						newPublicNetwork = false
+					}
+				}
+				if newPublicNetwork {
+					pnItem := make(map[string]interface{})
+					spn := make([]interface{}, 1)
+					spnItem := make(map[string]interface{})
+
+					spnItem["id"] = p.Id
+					if p.Ips != nil {
+						ips := make([]interface{}, len(p.Ips))
+						for k, l := range p.Ips {
+							ips[k] = l
+						}
+						spnItem["ips"] = ips
+					}
+					if p.StatusDescription != nil {
+						spnItem["status_description"] = *p.StatusDescription
+					}
+					spn[0] = spnItem
+					pnItem["server_public_network"] = spn
+					pn = append(pn, pnItem)
+				}
+			}
+		}
+		return pn
+	}
+	return make([]interface{}, 0)
+}
+
+func flattenServerTags(tagsRead []bmcapiclient.TagAssignment, tagsInput []interface{}) []interface{} {
+	if len(tagsRead) > 0 {
+		var tags []interface{}
+		if len(tagsInput) == 0 || tagsInput[0] == nil {
+			for _, j := range tagsRead {
+				tagsItem := make(map[string]interface{})
+				ta := make([]interface{}, 1)
+				taItem := make(map[string]interface{})
+
+				taItem["id"] = j.Id
+				taItem["name"] = j.Name
+				if j.Value != nil {
+					taItem["value"] = *j.Value
+				}
+				taItem["is_billing_tag"] = j.IsBillingTag
+				if j.CreatedBy != nil {
+					taItem["created_by"] = *j.CreatedBy
+				}
+				ta[0] = taItem
+				tagsItem["tag_assignment"] = ta
+				tags = append(tags, tagsItem)
+			}
+		} else if len(tagsInput) > 0 {
+			for i := range tagsInput {
+				for _, j := range tagsRead {
+					if tagsInput[i].(map[string]interface{})["tag_assignment"].([]interface{})[0].(map[string]interface{})["name"] == j.Name {
+						tagsItem := make(map[string]interface{})
+						ta := make([]interface{}, 1)
+						taItem := make(map[string]interface{})
+
+						taItem["id"] = j.Id
+						taItem["name"] = j.Name
+						if j.Value != nil {
+							taItem["value"] = *j.Value
+						}
+						taItem["is_billing_tag"] = j.IsBillingTag
+						if j.CreatedBy != nil {
+							taItem["created_by"] = *j.CreatedBy
+						}
+						ta[0] = taItem
+						tagsItem["tag_assignment"] = ta
+						tags = append(tags, tagsItem)
+					}
+				}
+			}
+			for _, p := range tagsRead {
+				var newTag = true
+				for r := range tags {
+					if p.Name == tags[r].(map[string]interface{})["tag_assignment"].([]interface{})[0].(map[string]interface{})["name"] {
+						newTag = false
+					}
+				}
+				if newTag {
+					tagsItem := make(map[string]interface{})
+					ta := make([]interface{}, 1)
+					taItem := make(map[string]interface{})
+
+					taItem["id"] = p.Id
+					taItem["name"] = p.Name
+					if p.Value != nil {
+						taItem["value"] = *p.Value
+					}
+					taItem["is_billing_tag"] = p.IsBillingTag
+					if p.CreatedBy != nil {
+						taItem["created_by"] = *p.CreatedBy
+					}
+					ta[0] = taItem
+					tagsItem["tag_assignment"] = ta
+					tags = append(tags, tagsItem)
+				}
+			}
+		}
+		return tags
+	}
+	return make([]interface{}, 0)
 }

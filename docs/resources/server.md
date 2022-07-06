@@ -90,7 +90,7 @@ The `private_network_configuration` block has 3 fields:
 
 * `gateway_address` - (Deprecated) The address of the gateway assigned / to assign to the server. When used as part of request body, it has to match one of the IP addresses used in the existing assigned private networks for the relevant location. Deprecated in favour of a common gateway address across all networks available under `network_configuration`.
 * `configuration_type` - Determines the approach for configuring IP blocks for the server being provisioned. Currently this field should be set to `USE_OR_CREATE_DEFAULT` or `USER_DEFINED`. Default value is `USE_OR_CREATE_DEFAULT`.
-* `private_networks` - The list of private networks this server is member of. When this field is part of request body, it'll be used to specify the private networks to assign to this server upon provisioning. Used alongside the `USER_DEFINED` configurationType.
+* `private_networks` - The list of private networks this server is member of. Used to specify the private networks to assign to this server upon provisioning or upon private network replacement. Used alongside the `USER_DEFINED` configurationType.
 
 The `private_networks` block has field `server_private_network`.
 The `server_private_network` block has 3 fields:
@@ -100,10 +100,11 @@ The `server_private_network` block has 3 fields:
 * `dhcp` - Determines whether DHCP is enabled for this server. Should be false if ips is not an empty list. Not supported for proxmox OS. Default value is `false`.
 
 The `ip_blocks_configuration` is the third field of the `network_configuration` block.
-The `ip_blocks_configuration` block has 2 fields:
+The `ip_blocks_configuration` block has 3 fields:
 
 * `configuration_type` - Determines the approach for configuring IP blocks for the server being provisioned. If `PURCHASE_NEW` is selected, the smallest supported range, depending on the operating system, is allocated to the server. The following values are allowed: `PURCHASE_NEW`, `USER_DEFINED`, `NONE`. Default value is `PURCHASE_NEW`.
-* `ip_blocks` - Used to specify the previously purchased IP blocks to assign to this server upon provisioning. Used alongside the `USER_DEFINED` configurationType. Must contain at most 1 item.
+* `relinquish_ip_blocks` - Used to determine whether to relinquish ownership of the IP block upon server deletion or upon IP block replacement. Default value is `false`.
+* `ip_blocks` - Used to specify the previously purchased IP blocks to assign to this server upon provisioning or upon IP block replacement. Used alongside the `USER_DEFINED` configurationType. Must contain at most 1 item.
 
 The `ip_blocks` block has field `server_ip_block`.
 The `server_ip_block` block has 2 fields:
@@ -112,7 +113,9 @@ The `server_ip_block` block has 2 fields:
 * `vlan_id` - The VLAN on which this IP block has been configured within the network switch.
 
 The `public_network_configuration` is the fourth field of the `network_configuration` block. 
-The `public_network_configuration` block has field `public_networks`:
+The `public_network_configuration` block has one field:
+
+* `public_networks` - The list of public networks this server is member of. Used to specify the public networks to assign to this server upon provisioning or upon public network replacement.
 
 The `public_networks` block has field `server_public_network`.
 The `server_public_network` block has 2 fields:
