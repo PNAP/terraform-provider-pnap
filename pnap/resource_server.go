@@ -678,6 +678,12 @@ func resourceServerRead(d *schema.ResourceData, m interface{}) error {
 	requestCommand := server.NewGetServerCommand(client, serverID)
 	resp, err := requestCommand.Execute()
 	if err != nil {
+		errStr := err.Error()
+		if !d.IsNewResource() && errStr[0:34] == "GetServerCommand returned Code 403" {
+			log.Printf("[WARN] Server %s not found, removing from state", serverID)
+			d.SetId("")
+			return nil
+		}
 		return err
 	}
 
