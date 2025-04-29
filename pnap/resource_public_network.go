@@ -217,24 +217,7 @@ func resourcePublicNetworkRead(d *schema.ResourceData, m interface{}) error {
 }
 
 func resourcePublicNetworkUpdate(d *schema.ResourceData, m interface{}) error {
-	if d.HasChange("name") || d.HasChange("description") {
-		client := m.(receiver.BMCSDK)
-		networkID := d.Id()
-		request := &networkapiclient.PublicNetworkModify{}
-		var name = d.Get("name").(string)
-		request.Name = &name
-		var desc = d.Get("description").(string)
-		request.Description = &desc
-
-		requestCommand := publicnetwork.NewUpdatePublicNetworkCommand(client, networkID, *request)
-		_, err := requestCommand.Execute()
-		if err != nil {
-			return err
-		}
-
-	} else if d.HasChange("force") {
-		// Do nothing
-	} else if d.HasChange("ip_blocks") {
+	if d.HasChange("ip_blocks") {
 		client := m.(receiver.BMCSDK)
 		networkID := d.Id()
 		query := &dto.Query{}
@@ -309,6 +292,20 @@ func resourcePublicNetworkUpdate(d *schema.ResourceData, m interface{}) error {
 				}
 			}
 		}
+	} else if d.HasChange("name") || d.HasChange("description") {
+		client := m.(receiver.BMCSDK)
+		networkID := d.Id()
+		request := &networkapiclient.PublicNetworkModify{}
+		var name = d.Get("name").(string)
+		request.Name = &name
+		var desc = d.Get("description").(string)
+		request.Description = &desc
+
+		requestCommand := publicnetwork.NewUpdatePublicNetworkCommand(client, networkID, *request)
+		_, err := requestCommand.Execute()
+		if err != nil {
+			return err
+		}
 	} else if d.HasChange("ra_enabled") {
 		client := m.(receiver.BMCSDK)
 		networkID := d.Id()
@@ -321,6 +318,8 @@ func resourcePublicNetworkUpdate(d *schema.ResourceData, m interface{}) error {
 		if err != nil {
 			return err
 		}
+	} else if d.HasChange("force") {
+		// Do nothing
 	} else {
 		return fmt.Errorf("unsupported action")
 	}
