@@ -35,9 +35,29 @@ func dataSourceReservation() *schema.Resource {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
+			"reservation_state": {
+				Type:     schema.TypeString,
+				Computed: true,
+			},
 			"initial_invoice_model": {
 				Type:     schema.TypeString,
 				Computed: true,
+			},
+			"quantity": {
+				Type:     schema.TypeList,
+				Computed: true,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"quantity": {
+							Type:     schema.TypeFloat,
+							Computed: true,
+						},
+						"unit": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+					},
+				},
 			},
 			"start_date_time": {
 				Type:     schema.TypeString,
@@ -80,6 +100,34 @@ func dataSourceReservation() *schema.Resource {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
+			"utilization": {
+				Type:     schema.TypeList,
+				Computed: true,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"quantity": {
+							Type:     schema.TypeList,
+							Computed: true,
+							Elem: &schema.Resource{
+								Schema: map[string]*schema.Schema{
+									"quantity": {
+										Type:     schema.TypeFloat,
+										Computed: true,
+									},
+									"unit": {
+										Type:     schema.TypeString,
+										Computed: true,
+									},
+								},
+							},
+						},
+						"percentage": {
+							Type:     schema.TypeFloat,
+							Computed: true,
+						},
+					},
+				},
+			},
 		},
 	}
 }
@@ -102,9 +150,12 @@ func dataSourceReservationRead(d *schema.ResourceData, m interface{}) error {
 				d.Set("product_category", instance.ProductCategory)
 				d.Set("location", instance.Location)
 				d.Set("reservation_model", instance.ReservationModel)
+				d.Set("reservation_state", instance.ReservationState)
 				if instance.InitialInvoiceModel != nil {
 					d.Set("initial_invoice_model", *instance.InitialInvoiceModel)
 				}
+				quant := flattenQuantity(&instance.Quantity)
+				d.Set("quantity", quant)
 				d.Set("start_date_time", instance.StartDateTime.String())
 				if instance.EndDateTime != nil {
 					endDateTime := *instance.EndDateTime
@@ -129,6 +180,8 @@ func dataSourceReservationRead(d *schema.ResourceData, m interface{}) error {
 				if instance.NextBillingDate != nil {
 					d.Set("next_billing_date", *instance.NextBillingDate)
 				}
+				util := flattenUtilization(instance.Utilization)
+				d.Set("utilization", util)
 			}
 		}
 		if numOfKeys > 1 {
@@ -145,9 +198,12 @@ func dataSourceReservationRead(d *schema.ResourceData, m interface{}) error {
 				d.Set("product_category", instance.ProductCategory)
 				d.Set("location", instance.Location)
 				d.Set("reservation_model", instance.ReservationModel)
+				d.Set("reservation_state", instance.ReservationState)
 				if instance.InitialInvoiceModel != nil {
 					d.Set("initial_invoice_model", *instance.InitialInvoiceModel)
 				}
+				quant := flattenQuantity(&instance.Quantity)
+				d.Set("quantity", quant)
 				d.Set("start_date_time", instance.StartDateTime.String())
 				if instance.EndDateTime != nil {
 					endDateTime := *instance.EndDateTime
@@ -172,6 +228,8 @@ func dataSourceReservationRead(d *schema.ResourceData, m interface{}) error {
 				if instance.NextBillingDate != nil {
 					d.Set("next_billing_date", *instance.NextBillingDate)
 				}
+				util := flattenUtilization(instance.Utilization)
+				d.Set("utilization", util)
 			}
 		}
 		if numOfKeys > 1 {
@@ -188,9 +246,12 @@ func dataSourceReservationRead(d *schema.ResourceData, m interface{}) error {
 				d.Set("product_category", instance.ProductCategory)
 				d.Set("location", instance.Location)
 				d.Set("reservation_model", instance.ReservationModel)
+				d.Set("reservation_state", instance.ReservationState)
 				if instance.InitialInvoiceModel != nil {
 					d.Set("initial_invoice_model", *instance.InitialInvoiceModel)
 				}
+				quant := flattenQuantity(&instance.Quantity)
+				d.Set("quantity", quant)
 				d.Set("start_date_time", instance.StartDateTime.String())
 				if instance.EndDateTime != nil {
 					endDateTime := *instance.EndDateTime
@@ -215,6 +276,8 @@ func dataSourceReservationRead(d *schema.ResourceData, m interface{}) error {
 				if instance.NextBillingDate != nil {
 					d.Set("next_billing_date", *instance.NextBillingDate)
 				}
+				util := flattenUtilization(instance.Utilization)
+				d.Set("utilization", util)
 			}
 		}
 		if numOfKeys > 1 {

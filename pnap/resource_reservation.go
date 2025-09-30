@@ -40,9 +40,31 @@ func resourceReservation() *schema.Resource {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
+			"reservation_state": {
+				Type:     schema.TypeString,
+				Computed: true,
+			},
 			"initial_invoice_model": {
 				Type:     schema.TypeString,
 				Computed: true,
+			},
+			"quantity": {
+				Type:     schema.TypeList,
+				Optional: true,
+				Computed: true,
+				MaxItems: 1,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"quantity": {
+							Type:     schema.TypeFloat,
+							Required: true,
+						},
+						"unit": {
+							Type:     schema.TypeString,
+							Required: true,
+						},
+					},
+				},
 			},
 			"start_date_time": {
 				Type:     schema.TypeString,
@@ -90,6 +112,34 @@ func resourceReservation() *schema.Resource {
 				Optional: true,
 				Default:  "",
 			},
+			"utilization": {
+				Type:     schema.TypeList,
+				Computed: true,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"quantity": {
+							Type:     schema.TypeList,
+							Computed: true,
+							Elem: &schema.Resource{
+								Schema: map[string]*schema.Schema{
+									"quantity": {
+										Type:     schema.TypeFloat,
+										Computed: true,
+									},
+									"unit": {
+										Type:     schema.TypeString,
+										Computed: true,
+									},
+								},
+							},
+						},
+						"percentage": {
+							Type:     schema.TypeFloat,
+							Computed: true,
+						},
+					},
+				},
+			},
 		},
 	}
 }
@@ -98,6 +148,21 @@ func resourceReservationCreate(d *schema.ResourceData, m interface{}) error {
 	client := m.(receiver.BMCSDK)
 	request := &billingapiclient.ReservationRequest{}
 	request.Sku = d.Get("sku").(string)
+	if d.Get("quantity") != nil && len(d.Get("quantity").([]interface{})) > 0 {
+		quantity := d.Get("quantity").([]interface{})[0]
+		quantityItem := quantity.(map[string]interface{})
+		quan := quantityItem["quantity"].(float64)
+		unit := quantityItem["unit"].(string)
+		quantityObject := billingapiclient.Quantity{}
+		quantityObject.Quantity = float32(quan)
+
+		unitEnum, errorUnit := billingapiclient.NewQuantityUnitEnumFromValue(unit)
+		if errorUnit != nil {
+			return errorUnit
+		}
+		quantityObject.Unit = *unitEnum
+		request.Quantity = &quantityObject
+	}
 	requestCommand := reservation.NewCreateReservationCommand(client, *request)
 	resp, err := requestCommand.Execute()
 	if err != nil {
@@ -120,9 +185,12 @@ func resourceReservationRead(d *schema.ResourceData, m interface{}) error {
 	d.Set("product_category", resp.ProductCategory)
 	d.Set("location", resp.Location)
 	d.Set("reservation_model", resp.ReservationModel)
+	d.Set("reservation_state", resp.ReservationState)
 	if resp.InitialInvoiceModel != nil {
 		d.Set("initial_invoice_model", *resp.InitialInvoiceModel)
 	}
+	quant := flattenQuantity(&resp.Quantity)
+	d.Set("quantity", quant)
 	d.Set("start_date_time", resp.StartDateTime.String())
 	if resp.EndDateTime != nil {
 		endDateTime := *resp.EndDateTime
@@ -148,6 +216,8 @@ func resourceReservationRead(d *schema.ResourceData, m interface{}) error {
 		d.Set("next_billing_date", *resp.NextBillingDate)
 	}
 	// d.Set("auto_renew_disable_reason", "")
+	utilization := flattenUtilization(resp.Utilization)
+	d.Set("utilization", utilization)
 
 	return nil
 }
@@ -197,4 +267,35 @@ func resourceReservationUpdate(d *schema.ResourceData, m interface{}) error {
 
 func resourceReservationDelete(d *schema.ResourceData, m interface{}) error {
 	return fmt.Errorf("unsupported action")
+}
+
+func flattenQuantity(quantity *billingapiclient.Quantity) []interface{} {
+	quant := make([]interface{}, 1)
+	quantItem := make(map[string]interface{})
+	size := quantity.Quantity
+	if size > 0 {
+		quantItem["quantity"] = float64(size)
+	}
+	unit := quantity.Unit
+	if len(unit) > 0 {
+		quantItem["unit"] = string(unit)
+	}
+	quant[0] = quantItem
+	return quant
+}
+
+func flattenUtilization(utilization *billingapiclient.Utilization) []interface{} {
+	util := make([]interface{}, 1)
+	utilItem := make(map[string]interface{})
+	if utilization != nil {
+		quantity := utilization.Quantity
+		quant := flattenQuantity(&quantity)
+		utilItem["quantity"] = quant
+		percentage := utilization.Percentage
+		if percentage >= 0 {
+			utilItem["percentage"] = float64(percentage)
+		}
+	}
+	util[0] = utilItem
+	return util
 }

@@ -96,7 +96,8 @@ func testAccCreateIpBlockResource(rName string) string {
 	return fmt.Sprintf(`
 resource "pnap_ip_block" "%s" {
     location = "PHX"
-    cidr_block_size = "/31"
+    cidr_block_size = "/64"
+	ip_version = "V6"
     description = "acctest"
 }`, rName)
 }
@@ -105,7 +106,8 @@ func testAccUpdateIpBlockResource(rName string) string {
 	return fmt.Sprintf(`
 resource "pnap_ip_block" "%s" {
     location = "PHX"
-    cidr_block_size = "/31"
+    cidr_block_size = "/64"
+	ip_version = "V6"
     description = "acctest-basic"
 }`, rName)
 }
@@ -152,14 +154,14 @@ func testAccCheckIpBlockAttributes(resourceName string, ipBlock *ipapiclient.IpB
 			return fmt.Errorf("location is not set")
 		}
 		if ipBlock.CidrBlockSize != nil {
-			if *ipBlock.CidrBlockSize != "/31" {
+			if *ipBlock.CidrBlockSize != "/64" {
 				return fmt.Errorf("cidr block size is not set")
 			}
 		} else {
 			return fmt.Errorf("cidr block size is not set")
 		}
 		if ipBlock.IpVersion != nil {
-			if *ipBlock.IpVersion != "V4" {
+			if *ipBlock.IpVersion != "V6" {
 				return fmt.Errorf("ip version is not set")
 			}
 		} else {
@@ -202,14 +204,14 @@ func testAccCheckIpBlockNewAttributes(resourceName string, ipBlock *ipapiclient.
 			return fmt.Errorf("location is not set")
 		}
 		if ipBlock.CidrBlockSize != nil {
-			if *ipBlock.CidrBlockSize != "/31" {
+			if *ipBlock.CidrBlockSize != "/64" {
 				return fmt.Errorf("cidr block size is not set")
 			}
 		} else {
 			return fmt.Errorf("cidr block size is not set")
 		}
 		if ipBlock.IpVersion != nil {
-			if *ipBlock.IpVersion != "V4" {
+			if *ipBlock.IpVersion != "V6" {
 				return fmt.Errorf("ip version is not set")
 			}
 		} else {

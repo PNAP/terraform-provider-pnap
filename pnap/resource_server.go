@@ -1,8 +1,10 @@
 package pnap
 
 import (
+	"encoding/binary"
 	"fmt"
 	"log"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -137,6 +139,11 @@ func resourceServer() *schema.Resource {
 				Computed: true,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 			},
+			"bring_your_own_license": {
+				Type:     schema.TypeBool,
+				Optional: true,
+				Computed: true,
+			},
 			"password": {
 				Type:      schema.TypeString,
 				Computed:  true,
@@ -261,6 +268,10 @@ func resourceServer() *schema.Resource {
 			},
 			"delete_ip_blocks": {
 				Type:     schema.TypeBool,
+				Optional: true,
+			},
+			"transfer_reservation_to": {
+				Type:     schema.TypeString,
 				Optional: true,
 			},
 			"tags": {
@@ -574,6 +585,8 @@ func resourceServerCreate(d *schema.ResourceData, m interface{}) error {
 	for i, v := range temp2 {
 		allowedIps[i] = fmt.Sprint(v)
 	}
+	bringLicense := d.Get("bring_your_own_license").(bool)
+
 	temp3 := d.Get("management_access_allowed_ips").(*schema.Set).List()
 	managementAccessAllowedIps := make([]string, len(temp3))
 	for i, v := range temp3 {
@@ -610,12 +623,15 @@ func resourceServerCreate(d *schema.ResourceData, m interface{}) error {
 		netris = true
 	}
 
-	if len(temp2) > 0 || len(temp3) > 0 || installOsToRam || len(datastoreName) > 0 || len(userData) > 0 || netris {
+	if len(temp2) > 0 || bringLicense || len(temp3) > 0 || installOsToRam || len(datastoreName) > 0 || len(userData) > 0 || netris {
 		dtoOsConfiguration := bmcapiclient.OsConfiguration{}
 
-		if len(temp2) > 0 {
+		if len(temp2) > 0 || bringLicense {
 			dtoWindows := bmcapiclient.OsConfigurationWindows{}
-			dtoWindows.RdpAllowedIps = allowedIps
+			if len(temp2) > 0 {
+				dtoWindows.RdpAllowedIps = allowedIps
+			}
+			dtoWindows.BringYourOwnLicense = &bringLicense
 			dtoOsConfiguration.Windows = &dtoWindows
 		}
 		if len(temp3) > 0 {
@@ -725,6 +741,10 @@ func resourceServerCreate(d *schema.ResourceData, m interface{}) error {
 							serverPrivateNetworkObject.Id = id
 						}
 						if (len(netIps)) > 0 {
+							if (len(netIps)) == 1 && netIps[0] == "" {
+								// Designate an empty array of IPs
+								netIps = make([]string, 0)
+							}
 							serverPrivateNetworkObject.Ips = netIps
 						}
 
@@ -806,6 +826,10 @@ func resourceServerCreate(d *schema.ResourceData, m interface{}) error {
 						serverPublicNetworkObject.Id = id
 					}
 					if (len(netIps)) > 0 {
+						if (len(netIps)) == 1 && netIps[0] == "" {
+							// Designate an empty array of IPs
+							netIps = make([]string, 0)
+						}
 						serverPublicNetworkObject.Ips = netIps
 					}
 					serverPublicNetworkObject.ComputeSlaacIp = &computeSlaacIp
@@ -931,12 +955,15 @@ func resourceServerRead(d *schema.ResourceData, m interface{}) error {
 		d.Set("management_access_allowed_ips", mgmntAccessAllowedIps)
 	}
 
-	if resp.OsConfiguration != nil && resp.OsConfiguration.Windows != nil && resp.OsConfiguration.Windows.RdpAllowedIps != nil {
-		var rdpAllowedIps []interface{}
-		for _, k := range resp.OsConfiguration.Windows.RdpAllowedIps {
-			rdpAllowedIps = append(rdpAllowedIps, k)
+	if resp.OsConfiguration != nil && resp.OsConfiguration.Windows != nil {
+		if resp.OsConfiguration.Windows.RdpAllowedIps != nil {
+			var rdpAllowedIps []interface{}
+			for _, k := range resp.OsConfiguration.Windows.RdpAllowedIps {
+				rdpAllowedIps = append(rdpAllowedIps, k)
+			}
+			d.Set("rdp_allowed_ips", rdpAllowedIps)
 		}
-		d.Set("rdp_allowed_ips", rdpAllowedIps)
+		d.Set("bring_your_own_license", resp.OsConfiguration.Windows.BringYourOwnLicense)
 	}
 
 	if resp.OsConfiguration != nil {
@@ -1155,6 +1182,17 @@ func resourceServerUpdate(d *schema.ResourceData, m interface{}) error {
 		if err != nil {
 			return err
 		}
+	} else if d.HasChange("transfer_reservation_to") {
+		client := m.(receiver.BMCSDK)
+		request := &bmcapiclient.ReservationTransferDetails{}
+		serverID := d.Id()
+		request.TargetServerId = d.Get("transfer_reservation_to").(string)
+
+		requestCommand := server.NewTransferServerReservationCommand(client, serverID, *request)
+		_, err := requestCommand.Execute()
+		if err != nil {
+			return err
+		}
 	} else if d.HasChange("tags") {
 		tags := d.Get("tags").([]interface{})
 		client := m.(receiver.BMCSDK)
@@ -1349,7 +1387,7 @@ func flattenNetworkConfiguration(netConf *bmcapiclient.NetworkConfiguration, ncI
 						pnetworksExists = false
 					}
 					for i, j := range prNet {
-						for k, _ := range pn {
+						for k := range pn {
 							if !pnetworksExists || pn[k].(map[string]interface{})["server_private_network"].([]interface{})[0].(map[string]interface{})["id"] == j.Id {
 
 								var pnItem map[string]interface{}
@@ -1371,13 +1409,36 @@ func flattenNetworkConfiguration(netConf *bmcapiclient.NetworkConfiguration, ncI
 								}
 
 								spnItem["id"] = j.Id
-								if j.Ips != nil {
-									ips := make([]interface{}, len(j.Ips))
-									for k, l := range j.Ips {
-										ips[k] = l
-									}
-									spnItem["ips"] = ips
+
+								ipsInput := make([]interface{}, 0)
+								if spnItem["ips"] != nil {
+									ipsInput = spnItem["ips"].(*schema.Set).List()
 								}
+								if len(ipsInput) == 1 && ipsInput[0] == "" {
+									spnItem["ips"] = ipsInput
+								} else if j.Ips != nil {
+									ipsApi := j.Ips
+									ipsApiMono := divideIpsRange(ipsApi)
+
+									ipsInputS := make([]string, len(ipsInput))
+									for m, n := range ipsInput {
+										ipsInputS[m] = n.(string)
+									}
+									ipsInputMono := divideIpsRange(ipsInputS)
+
+									ipsInputMonoPurged := removeDuplicateIps(ipsInputMono)
+
+									if compareIps(ipsApiMono, ipsInputMonoPurged) {
+										spnItem["ips"] = ipsInput
+									} else {
+										ips := make([]interface{}, len(ipsApi))
+										for o, p := range ipsApi {
+											ips[o] = p
+										}
+										spnItem["ips"] = ips
+									}
+								}
+
 								if j.Dhcp != nil {
 									spnItem["dhcp"] = *j.Dhcp
 								}
@@ -1433,35 +1494,99 @@ func flattenNetworkConfiguration(netConf *bmcapiclient.NetworkConfiguration, ncI
 			}
 			if netConf.PublicNetworkConfiguration != nil {
 				pubNetConf := *netConf.PublicNetworkConfiguration
+				var pnc []interface{}
+				if (nciMap["public_network_configuration"]) != nil && len(nciMap["public_network_configuration"].([]interface{})) > 0 {
+					pnc = nciMap["public_network_configuration"].([]interface{})
+				} else {
+					pnc = make([]interface{}, 1)
+				}
+				var pncItem map[string]interface{}
+				if len(pnc) > 0 && pnc[0] != nil {
+					pncItem = pnc[0].(map[string]interface{})
+				} else {
+					pncItem = make(map[string]interface{})
+				}
 				if pubNetConf.PublicNetworks != nil {
-					pubnc := nciMap["public_network_configuration"]
-					if pubnc == nil || len(pubnc.([]interface{})) == 0 {
-						pubnc = make([]interface{}, 1)
-						pubnci := make(map[string]interface{})
-						pubnc.([]interface{})[0] = pubnci
+					pubNet := pubNetConf.PublicNetworks
+					var pn []interface{}
+					var pnetworksExists = false
+					if pncItem["public_networks"] != nil {
+						pn = pncItem["public_networks"].([]interface{})
+						pnetworksExists = true
+					} else {
+						pn = make([]interface{}, len(pubNet))
+						pnetworksExists = false
 					}
+					for i, j := range pubNet {
+						for k := range pn {
+							if !pnetworksExists || pn[k].(map[string]interface{})["server_public_network"].([]interface{})[0].(map[string]interface{})["id"] == j.Id {
 
-					pubnci := pubnc.([]interface{})[0]
-					pubncInput := pubnci.(map[string]interface{})
+								var pnItem map[string]interface{}
+								var spn []interface{}
+								var spnItem map[string]interface{}
 
-					pubNets := pubNetConf.PublicNetworks
-					if pubncInput["public_networks"] != nil && len(pubncInput["public_networks"].([]interface{})) > 0 {
-						pubNetInput := pubncInput["public_networks"].([]interface{})
-						for _, j := range pubNetInput {
-							pubNetInputItem := j.(map[string]interface{})
-							serPubNet := pubNetInputItem["server_public_network"].([]interface{})[0]
-							serPubNetItem := serPubNet.(map[string]interface{})
-							id := serPubNetItem["id"].(string)
-							for _, l := range pubNets {
-								if id == l.Id {
-									if l.StatusDescription != nil {
-										serPubNetItem["status_description"] = *l.StatusDescription
+								if !pnetworksExists {
+									pnItem = make(map[string]interface{})
+									spn = make([]interface{}, 1)
+									spnItem = make(map[string]interface{})
+								} else {
+									pnItem = pn[k].(map[string]interface{})
+									spn = pnItem["server_public_network"].([]interface{})
+									spnItem = spn[0].(map[string]interface{})
+								}
+
+								spnItem["id"] = j.Id
+
+								ipsInput := make([]interface{}, 0)
+								if spnItem["ips"] != nil {
+									ipsInput = spnItem["ips"].(*schema.Set).List()
+								}
+								if len(ipsInput) == 1 && ipsInput[0] == "" {
+									spnItem["ips"] = ipsInput
+								} else if j.Ips != nil {
+									ipsApi := j.Ips
+									ipsApiMono := divideIpsRange(ipsApi)
+
+									ipsInputS := make([]string, len(ipsInput))
+									for m, n := range ipsInput {
+										ipsInputS[m] = n.(string)
+									}
+									ipsInputMono := divideIpsRange(ipsInputS)
+
+									ipsInputMonoPurged := removeDuplicateIps(ipsInputMono)
+
+									if compareIps(ipsApiMono, ipsInputMonoPurged) {
+										spnItem["ips"] = ipsInput
+									} else {
+										ips := make([]interface{}, len(ipsApi))
+										for o, p := range ipsApi {
+											ips[o] = p
+										}
+										spnItem["ips"] = ips
 									}
 								}
+
+								if j.ComputeSlaacIp != nil {
+									spnItem["dhcp"] = *j.ComputeSlaacIp
+								}
+								if j.StatusDescription != nil {
+									spnItem["status_description"] = *j.StatusDescription
+								}
+								if !pnetworksExists {
+									spn[0] = spnItem
+									pnItem["server_public_network"] = spn
+									pn[i] = pnItem
+								}
+							}
+							if !pnetworksExists {
+								break
 							}
 						}
 					}
+					pncItem["public_networks"] = pn
 				}
+				pnc[0] = pncItem
+				nciMap["public_network_configuration"] = pnc
 			}
 			//return ncInput
 		}
@@ -1503,4 +1628,75 @@ func supressUserDefinedNetworkType(k, oldValue, newValue string, d *schema.Resou
 	} else {
 		return false
 	}
+}
+
+// divideIpsRange transforms a slice of IP adresses in range format to a slice of individual IP adresses.
+func divideIpsRange(ipsRanged []string) []string {
+	var ipsMono []string
+	for _, j := range ipsRanged {
+		if strings.Contains(j, " - ") {
+			firstLast := strings.Split(j, " - ")
+			if len(firstLast) > 0 {
+				first := firstLast[0]
+				last := firstLast[1]
+				firstAddr, _ := netip.ParseAddr(first)
+				lastAddr, _ := netip.ParseAddr(last)
+				nextAddr := firstAddr.Next()
+
+				num1 := binary.BigEndian.Uint32(firstAddr.AsSlice())
+				num2 := binary.BigEndian.Uint32(lastAddr.AsSlice())
+				for i := num1; i <= num2; i++ {
+					if nextAddr == lastAddr {
+						ipsMono = append(ipsMono, first, last)
+						break
+					} else {
+						ipsMono = append(ipsMono, first)
+						first = nextAddr.String()
+						nextAddr = nextAddr.Next()
+					}
+				}
+			}
+		} else {
+			ipsMono = append(ipsMono, j)
+		}
+	}
+	return ipsMono
+}
+
+// compareIps compares slices of individual IP adresses and returns true if they are equal or false if they are not equal.
+func compareIps(ips1 []string, ips2 []string) bool {
+	var num int
+	if len(ips1) == len(ips2) {
+		for _, j := range ips1 {
+			ip1, _ := netip.ParseAddr(j)
+			var exists bool
+			for _, l := range ips2 {
+				ip2, _ := netip.ParseAddr(l)
+				if ip1 == ip2 {
+					num += 1
+					exists = true
+				}
+			}
+			if !exists {
+				return false
+			}
+		}
+		if len(ips1) == num {
+			return true
+		}
+	}
+	return false
+}
+
+// removeDuplicateIps removes duplicates of IP adresses
+func removeDuplicateIps(ips []string) []string {
+	presentIps := make(map[string]bool)
+	var ipsPurged []string
+	for _, k := range ips {
+		if _, l := presentIps[k]; !l {
+			presentIps[k] = true
+			ipsPurged = append(ipsPurged, k)
+		}
+	}
+	return ipsPurged
 }

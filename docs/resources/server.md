@@ -72,6 +72,7 @@ The following arguments are supported:
 * `pricing_model` - Server pricing model. Currently this field should be set to HOURLY, ONE_MONTH_RESERVATION, TWELVE_MONTHS_RESERVATION, TWENTY_FOUR_MONTHS_RESERVATION or THIRTY_SIX_MONTHS_RESERVATION.
 * `network_type` - The type of network configuration for this server. Currently this field should be set to PUBLIC_AND_PRIVATE, PRIVATE_ONLY, PUBLIC_ONLY or USER_DEFINED. Setting the force query parameter to `true` allows you to configure network configuration type as NONE.
 * `rdp_allowed_ips` - List of IPs allowed for RDP access to Windows OS. Supported in single IP, CIDR and range format. When undefined, RDP is disabled. To allow RDP access from any IP use 0.0.0.0/0. Must contain at least 1 item.
+* `bring_your_own_license` - Use a Bring Your Own (BYO) Windows license. If true, the server is provisioned in trial mode, and you must activate your own license. If false (default), the server includes a managed Windows license billed by the platform.
 * `management_access_allowed_ips` - Define list of IPs allowed to access the Management UI. Supported in single IP, CIDR and range format. When undefined, Management UI is disabled.Must contain at least 1 item.
 * `install_os_to_ram` - If true, OS will be installed to and booted from the server's RAM. On restart RAM OS will be lost and the server will not be reachable unless a custom bootable OS has been deployed. Only supported for ubuntu/focal. Default value is `false`.
 * `cloud_init` - Cloud-init configuration details. Structure is documented below.
@@ -83,6 +84,7 @@ The following arguments are supported:
 * `action` - Action to perform on server. Allowed actions are: reboot, reset (deprecated), powered-on, powered-off, shutdown.
 * `force` - Query parameter controlling advanced features availability. Currently applicable for networking. It is advised to use with caution since it might lead to unhealthy setups.
 * `delete_ip_blocks` - Determines whether the IP blocks assigned to the server should be deleted or not when the server is being deleted, i.e. [deprovisioned](https://developers.phoenixnap.com/docs/bmc/1/routes/servers/%7BserverId%7D/actions/deprovision/post). Default value is `false`.
+* `transfer_reservation_to` - ID of target server to transfer reservation to.
 
 
 The `esxi` block has field `datastore_configuration`:
@@ -125,8 +127,8 @@ The `private_networks` block has field `server_private_network`.
 The `server_private_network` block has 3 fields:
 
 * `id` - (Required) The network identifier.
-* `ips` - IPs to configure/configured on the server. Should be null or empty list if DHCP is true. Must contain at most 10 items.
-* `dhcp` - Determines whether DHCP is enabled for this server. Should be false if ips is not an empty list. Not supported for proxmox OS. Default value is `false`.
+* `ips` - IPs to configure/configured on the server. Valid IP formats are single IPv4 addresses or IPv4 ranges. IPs must be within the network's range. Should be null or empty list if DHCP is true. Setting the `force` query parameter to `true` allows you to: (1) Assign no specific IP addresses by designating an empty array of IPs (to do this set the field exactly to `[""]`). (2) Assign one or more IP addresses which are already configured on other resource(s) in network. (3) Assign IP addresses which are considered as reserved in network.
+* `dhcp` - Determines whether DHCP is enabled for this server. Not supported on Proxmox OS. Default value is `false`. The following restrictions apply when enabling DHCP: (1) DHCP support is limited to servers configured exclusively with private networks (PRIVATE_ONLY), (2) DHCP value needs to be consistent across all server-configured private networks, (3) The server does not support manual gateway address configuration, (4) Private IP addresses for network cannot be specified.
 
 The `ip_blocks_configuration` is the third field of the `network_configuration` block.
 The `ip_blocks_configuration` block has 2 fields:
@@ -147,7 +149,7 @@ The `public_networks` block has field `server_public_network`.
 The `server_public_network` block has 3 fields:
 
 * `id` - (Required) The network identifier.
-* `ips` - (Required) IPs to configure on the server. IPs must be within the network's range. Must contain at least 1 item.
+* `ips` - (Required) IPs to configure on the server. Valid IP formats include single IP addresses or IP ranges. IPs must be within the network's range. Must contain at least 1 item. Setting the `force` query parameter to `true` allows you to: (1) Assign no specific IP addresses by designating an empty array of IPs (to do this set the field exactly to `[""]`). (2) Assign one or more IP addresses which are already configured on other resource(s) in network.
 * `compute_slaac_ip` - Requests Stateless Address Autoconfiguration (SLAAC). Applicable for Network which contains IPv6 block.
 
 
@@ -178,6 +180,7 @@ The following attributes are exported:
 * `public_ip_addresses` - Public IP Addresses assigned to server. Must contain at least 1 item.
 * `reservation_id` - The reservation reference id if any.
 * `pricing_model` - The pricing model this server is being billed.
+* `bring_your_own_license` - Use a Bring Your Own (BYO) Windows license. If true, the server is provisioned in trial mode, and you must activate your own license. If false (default), the server includes a managed Windows license billed by the platform.
 * `password` - Password set for user Admin on Windows server which will only be returned in response to provisioning a server.
 * `network_type` - The type of network configuration for this server. 
 * `cluster_id` - The cluster reference id if any.
