@@ -41,6 +41,7 @@ func TestAccPnapIpBlock_basic(t *testing.T) {
 					// verify local values
 					resource.TestCheckResourceAttr(rLine, "status", "unassigned"),
 					resource.TestCheckResourceAttr(rLine, "is_bring_your_own", "false"),
+					resource.TestCheckResourceAttrSet(rLine, "ip_version"),
 					resource.TestCheckResourceAttrSet(rLine, "cidr"),
 					resource.TestCheckResourceAttrSet(rLine, "created_on"),
 				),
@@ -57,6 +58,7 @@ func TestAccPnapIpBlock_basic(t *testing.T) {
 					// verify local values
 					resource.TestCheckResourceAttr(rLine, "status", "unassigned"),
 					resource.TestCheckResourceAttr(rLine, "is_bring_your_own", "false"),
+					resource.TestCheckResourceAttrSet(rLine, "ip_version"),
 					resource.TestCheckResourceAttrSet(rLine, "cidr"),
 					resource.TestCheckResourceAttrSet(rLine, "created_on"),
 				),
