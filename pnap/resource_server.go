@@ -1223,6 +1223,131 @@ func resourceServerUpdate(d *schema.ResourceData, m interface{}) error {
 		if err != nil {
 			return err
 		}
+	} else if d.HasChange("network_configuration") {
+		client := m.(receiver.BMCSDK)
+		serverID := d.Id()
+		query := &dto.Query{}
+		var force = d.Get("force").(bool)
+		query.Force = force
+		oldInterface, newInterface := d.GetChange("network_configuration")
+		old := oldInterface.([]interface{})
+		new := newInterface.([]interface{})
+
+		if len(new) != 1 || len(old) != 1 {
+			return fmt.Errorf("unsupported action")
+		}
+		ncOldMap := old[0].(map[string]interface{})
+		ncNewMap := new[0].(map[string]interface{})
+		if d.HasChange("network_configuration.0.gateway_address") || d.HasChange("network_configuration.0.ip_blocks_configuration") ||
+			d.HasChange("network_configuration.0.public_network_configuration") {
+			return fmt.Errorf("unsupported action")
+		}
+		var pncNew, pncOld, pnNew, pnOld []interface{}
+		if (ncNewMap["private_network_configuration"]) != nil && len(ncNewMap["private_network_configuration"].([]interface{})) > 0 {
+			pncNew = ncNewMap["private_network_configuration"].([]interface{})
+		}
+		if (ncOldMap["private_network_configuration"]) != nil && len(ncOldMap["private_network_configuration"].([]interface{})) > 0 {
+			pncOld = ncOldMap["private_network_configuration"].([]interface{})
+		}
+		var pncNewMap, pncOldMap map[string]interface{}
+		if len(pncNew) > 0 && pncNew[0] != nil {
+			pncNewMap = pncNew[0].(map[string]interface{})
+		}
+		if len(pncOld) > 0 && pncOld[0] != nil {
+			pncOldMap = pncOld[0].(map[string]interface{})
+		}
+		if pncNewMap["gateway_address"] != pncOldMap["gateway_address"] || pncNewMap["configuration_type"] != pncOldMap["configuration_type"] {
+			return fmt.Errorf("unsupported action")
+		}
+		if pncNewMap["private_networks"] != nil {
+			pnNew = pncNewMap["private_networks"].([]interface{})
+		}
+		if pncOldMap["private_networks"] != nil {
+			pnOld = pncOldMap["private_networks"].([]interface{})
+		}
+		var newIds []string
+		var newIpss [][]string
+		var newDhcps []bool
+		if len(pnNew) > 0 {
+			for _, j := range pnNew {
+				pnNewMap := j.(map[string]interface{})
+				spnNew := pnNewMap["server_private_network"].([]interface{})[0]
+				spnNewMap := spnNew.(map[string]interface{})
+				newId := spnNewMap["id"].(string)
+				tempIps := spnNewMap["ips"].(*schema.Set).List()
+				newIps := make([]string, len(tempIps))
+				for i, v := range tempIps {
+					newIps[i] = fmt.Sprint(v)
+				}
+				// Designate an empty array of IPs
+				if (len(newIps)) > 0 {
+					if (len(newIps)) == 1 && newIps[0] == "" {
+						newIps = make([]string, 0)
+					}
+				}
+				newDhcp := spnNewMap["dhcp"].(bool)
+				newIds = append(newIds, newId)
+				newIpss = append(newIpss, newIps)
+				newDhcps = append(newDhcps, newDhcp)
+			}
+		}
+		var oldIds []string
+		if len(pnOld) > 0 {
+			for _, j := range pnOld {
+				pnOldMap := j.(map[string]interface{})
+				spnOld := pnOldMap["server_private_network"].([]interface{})[0]
+				spnOldMap := spnOld.(map[string]interface{})
+				oldId := spnOldMap["id"].(string)
+				oldIds = append(oldIds, oldId)
+			}
+		}
+		var sameIds []string
+		var idExists bool
+		for _, l := range newIds {
+			idExists = false
+			for _, n := range oldIds {
+				if n == l {
+					idExists = true
+				}
+			}
+			if idExists {
+				sameIds = append(sameIds, l)
+			}
+		}
+		for o, p := range newIds {
+			idExists = false
+			for _, r := range sameIds {
+				if p == r {
+					idExists = true
+				}
+			}
+			if !idExists {
+				request := &bmcapiclient.ServerPrivateNetwork{}
+				request.Id = p
+				request.Ips = newIpss[o]
+				request.Dhcp = &newDhcps[o]
+				requestCommand := server.NewAddServer2PrivateNetworkCommandWithQuery(client, serverID, *request, query)
+				_, err := requestCommand.Execute()
+				if err != nil {
+					return err
+				}
+			}
+		}
+		for _, t := range oldIds {
+			idExists = false
+			for _, v := range sameIds {
+				if t == v {
+					idExists = true
+				}
+			}
+			if !idExists {
+				requestCommand := server.NewDeleteServerPrivateNetworkCommand(client, serverID, t)
+				_, err := requestCommand.Execute()
+				if err != nil {
+					return err
+				}
+			}
+		}
 	} else if d.HasChange("hostname") || d.HasChange("description") {
 		client := m.(receiver.BMCSDK)
 		serverID := d.Id()
@@ -1566,9 +1691,6 @@ func flattenNetworkConfiguration(netConf *bmcapiclient.NetworkConfiguration, ncI
 									}
 								}
 
-								if j.ComputeSlaacIp != nil {
-									spnItem["dhcp"] = *j.ComputeSlaacIp
-								}
 								if j.StatusDescription != nil {
 									spnItem["status_description"] = *j.StatusDescription
 								}
