@@ -31,8 +31,8 @@ The following arguments are supported:
 * `auto_renew` - A flag indicating whether the reservation will auto-renew (default is true, it can only be modified after the creation of resource).
 * `auto_renew_disable_reason` - The reason for disabling auto-renewal.
 * `quantity` - Represents the quantity.
-  * `quantity` - Quantity size.
-  * `unit` - The quantity unit.
+    * `quantity` - Quantity size.
+    * `unit` - The quantity unit.
 
 
 ## Attributes Reference
@@ -47,8 +47,8 @@ The following attributes are exported:
 * `reservation_state` - Reservation state.
 * `initial_invoice_model` - Reservations created with initial invoice model ON_CREATION will be invoiced on same date when reservation is created. Reservation created with CALENDAR_MONTH initial invoice model will be invoiced at the begining of next month.
 * `quantity` - Represents the quantity.
-  * `quantity` - Quantity size.
-  * `unit` - Quantity unit.
+    * `quantity` - Quantity size.
+    * `unit` - Quantity unit.
 * `start_date_time` - The point in time (in UTC) when the reservation starts.
 * `end_date_time` - The point in time (in UTC) when the reservation ends.
 * `last_renewal_date_time` - The point in time (in UTC) when the reservation was renewed last.
@@ -60,7 +60,7 @@ The following attributes are exported:
 * `assigned_resource_id` - The resource ID currently being assigned to reservation.
 * `next_billing_date` - Next billing date for reservation.
 * `utilization` - Utilization.
-  * `quantity` - Represents the quantity.
-    * `quantity` - Quantity size.
-    * `unit` - Quantity unit.
-  * `percentage` - Percentage.
+    * `quantity` - Represents the quantity.
+        * `quantity` - Quantity size.
+        * `unit` - Quantity unit.
+    * `percentage` - Percentage.
