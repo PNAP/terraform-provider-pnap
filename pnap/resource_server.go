@@ -1507,6 +1507,19 @@ func flattenNetworkConfiguration(netConf *bmcapiclient.NetworkConfiguration, ncI
 					if pncItem["private_networks"] != nil {
 						pn = pncItem["private_networks"].([]interface{})
 						pnetworksExists = true
+
+						var sameNet bool
+						for _, m := range prNet {
+							for n := range pn {
+								pnId := pn[n].(map[string]interface{})["server_private_network"].([]interface{})[0].(map[string]interface{})["id"]
+								if pnId == m.Id {
+									sameNet = true
+								}
+							}
+						}
+						if !sameNet {
+							pnetworksExists = false
+						}
 					} else {
 						pn = make([]interface{}, len(prNet))
 						pnetworksExists = false
