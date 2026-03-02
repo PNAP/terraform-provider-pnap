@@ -376,6 +376,10 @@ func resourceServer() *schema.Resource {
 																Type:     schema.TypeString,
 																Computed: true,
 															},
+															"vlan_id": {
+																Type:     schema.TypeInt,
+																Computed: true,
+															},
 														},
 													},
 												},
@@ -464,6 +468,10 @@ func resourceServer() *schema.Resource {
 															"compute_slaac_ip": {
 																Type:     schema.TypeBool,
 																Optional: true,
+															},
+															"vlan_id": {
+																Type:     schema.TypeInt,
+																Computed: true,
 															},
 														},
 													},
@@ -1479,6 +1487,9 @@ func readServerPrivateNetworks(pncItem map[string]interface{}, prNet []bmcapicli
 				if j.StatusDescription != nil {
 					spnItem["status_description"] = *j.StatusDescription
 				}
+				if j.VlanId != nil {
+					spnItem["vlan_id"] = *j.VlanId
+				}
 				if !pnetworksExists {
 					spn[0] = spnItem
 					pnItem["server_private_network"] = spn
@@ -1622,6 +1633,9 @@ func readServerPublicNetworks(pncItem map[string]interface{}, pubNet []bmcapicli
 				if j.StatusDescription != nil {
 					spnItem["status_description"] = *j.StatusDescription
 				}
+				if j.VlanId != nil {
+					spnItem["vlan_id"] = *j.VlanId
+				}
 				if !pnetworksExists {
 					spn[0] = spnItem
 					pnItem["server_public_network"] = spn
@@ -1674,11 +1688,14 @@ func resolvePublicIps(spnItem map[string]interface{}, j bmcapiclient.ServerPubli
 func divideIpsRange(ipsRanged []string) []string {
 	var ipsMono []string
 	for _, j := range ipsRanged {
-		if strings.Contains(j, " - ") {
-			firstLast := strings.Split(j, " - ")
-			if len(firstLast) > 0 {
-				first := firstLast[0]
-				last := firstLast[1]
+		if strings.Contains(j, "-") {
+			firstLast := strings.Split(j, "-")
+			if len(firstLast) == 1 {
+				singleIp := strings.TrimSpace(firstLast[0])
+				ipsMono = append(ipsMono, singleIp)
+			} else if len(firstLast) > 1 {
+				first := strings.TrimSpace(firstLast[0])
+				last := strings.TrimSpace(firstLast[1])
 				firstAddr, _ := netip.ParseAddr(first)
 				lastAddr, _ := netip.ParseAddr(last)
 				nextAddr := firstAddr.Next()
@@ -1697,6 +1714,7 @@ func divideIpsRange(ipsRanged []string) []string {
 				}
 			}
 		} else {
+			j = strings.TrimSpace(j)
 			ipsMono = append(ipsMono, j)
 		}
 	}
