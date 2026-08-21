@@ -382,6 +382,7 @@ func resourceServer() *schema.Resource {
 									"private_networks": {
 										Type:     schema.TypeSet,
 										Optional: true,
+										Computed: true,
 										Elem: &schema.Resource{
 											Schema: map[string]*schema.Schema{
 												"server_private_network": {
@@ -437,6 +438,7 @@ func resourceServer() *schema.Resource {
 									"ip_blocks": {
 										Type:     schema.TypeSet,
 										Optional: true,
+										Computed: true,
 										Elem: &schema.Resource{
 											Schema: map[string]*schema.Schema{
 												"server_ip_block": {
@@ -473,6 +475,7 @@ func resourceServer() *schema.Resource {
 									"public_networks": {
 										Type:     schema.TypeSet,
 										Optional: true,
+										Computed: true,
 										Elem: &schema.Resource{
 											Schema: map[string]*schema.Schema{
 												"server_public_network": {
@@ -1106,7 +1109,10 @@ func resourceServerRead(d *schema.ResourceData, m interface{}) error {
 	}
 
 	var ncInput = d.Get("network_configuration").([]interface{})
-	networkConfiguration := flattenNetworkConfiguration(&resp.NetworkConfiguration, ncInput)
+	networkConfiguration, err := flattenNetworkConfiguration(&resp.NetworkConfiguration, ncInput)
+	if err != nil {
+		return err
+	}
 
 	if err := d.Set("network_configuration", networkConfiguration); err != nil {
 		return err
@@ -1475,7 +1481,7 @@ func refreshForCreate(client *receiver.BMCSDK, id string) resource.StateRefreshF
 	}
 }
 
-func flattenNetworkConfiguration(netConf *bmcapiclient.NetworkConfiguration, ncInput []interface{}) []interface{} {
+func flattenNetworkConfiguration(netConf *bmcapiclient.NetworkConfiguration, ncInput []interface{}) ([]interface{}, error) {
 	if len(ncInput) == 0 {
 		ncInput = make([]interface{}, 1)
 		n := make(map[string]interface{})
@@ -1483,6 +1489,7 @@ func flattenNetworkConfiguration(netConf *bmcapiclient.NetworkConfiguration, ncI
 	}
 	nci := ncInput[0]
 	nciMap := nci.(map[string]interface{})
+	var err error
 
 	if netConf != nil {
 		if netConf.GatewayAddress != nil {
@@ -1501,12 +1508,12 @@ func flattenNetworkConfiguration(netConf *bmcapiclient.NetworkConfiguration, ncI
 			if prNetConf.GatewayAddress != nil {
 				pncItem["gateway_address"] = *prNetConf.GatewayAddress
 			}
-			if prNetConf.ConfigurationType != nil && len(*prNetConf.ConfigurationType) > 0 {
-				pncItem["configuration_type"] = *prNetConf.ConfigurationType
-			}
 			if prNetConf.PrivateNetworks != nil {
 				privateNetworks := prNetConf.PrivateNetworks
-				pncItem = readServerPrivateNetworks(pncItem, privateNetworks)
+				pncItem, err = readServerPrivateNetworks(pncItem, privateNetworks)
+				if err != nil {
+					return nil, err
+				}
 			}
 			pnc[0] = pncItem
 			nciMap["private_network_configuration"] = pnc
@@ -1540,14 +1547,17 @@ func flattenNetworkConfiguration(netConf *bmcapiclient.NetworkConfiguration, ncI
 			}
 			if pubNetConf.PublicNetworks != nil {
 				pubNet := pubNetConf.PublicNetworks
-				pncItem = readServerPublicNetworks(pncItem, pubNet)
+				pncItem, err = readServerPublicNetworks(pncItem, pubNet)
+				if err != nil {
+					return nil, err
+				}
 			}
 			pnc[0] = pncItem
 			nciMap["public_network_configuration"] = pnc
 		}
-		return ncInput
+		return ncInput, nil
 	} else {
-		return nil
+		return nil, nil
 	}
 }
 
@@ -1588,7 +1598,7 @@ func supressUserDefinedNetworkType(k, oldValue, newValue string, d *schema.Resou
 }
 
 // readServerPrivateNetworks reads server private networks from API
-func readServerPrivateNetworks(pncItem map[string]interface{}, prNet []bmcapiclient.ServerPrivateNetwork) map[string]interface{} {
+func readServerPrivateNetworks(pncItem map[string]interface{}, prNet []bmcapiclient.ServerPrivateNetwork) (map[string]interface{}, error) {
 	pn := make([]interface{}, len(prNet))
 	pni := make([]interface{}, len(prNet))
 	if pncItem["private_networks"] != nil {
@@ -1611,7 +1621,10 @@ func readServerPrivateNetworks(pncItem map[string]interface{}, prNet []bmcapicli
 				ispnItem := pni[k].(map[string]interface{})["server_private_network"].([]interface{})[0].(map[string]interface{})
 				if ispnItem["id"] == j.Id {
 					ipsInput := ispnItem["ips"].(*schema.Set).List()
-					ipsi := resolveIps(ipsInput, j.Ips)
+					ipsi, err := resolveIps(ipsInput, j.Ips)
+					if err != nil {
+						return nil, err
+					}
 					spnItem["ips"] = ipsi
 				}
 			}
@@ -1630,7 +1643,7 @@ func readServerPrivateNetworks(pncItem map[string]interface{}, prNet []bmcapicli
 		pn[i] = pnItem
 	}
 	pncItem["private_networks"] = pn
-	return pncItem
+	return pncItem, nil
 }
 
 // readServerIpBlocks reads server ip blocks from API
@@ -1655,18 +1668,18 @@ func readServerIpBlocks(ibcItem map[string]interface{}, ipBlocks []bmcapiclient.
 }
 
 // readServerPublicNetworks reads server public networks from API
-func readServerPublicNetworks(pncItem map[string]interface{}, pubNet []bmcapiclient.ServerPublicNetwork) map[string]interface{} {
+func readServerPublicNetworks(pncItem map[string]interface{}, pubNet []bmcapiclient.ServerPublicNetwork) (map[string]interface{}, error) {
 	pn := make([]interface{}, len(pubNet))
 	pni := make([]interface{}, len(pubNet))
 	if pncItem["public_networks"] != nil {
 		pni = pncItem["public_networks"].(*schema.Set).List()
 	}
-	var ipv6 bool
 	for i, j := range pubNet {
 		pnItem := make(map[string]interface{})
 		spn := make([]interface{}, 1)
 		spnItem := make(map[string]interface{})
 		spnItem["id"] = j.Id
+		var ipv6 bool
 		if j.Ips != nil {
 			ips := make([]interface{}, len(j.Ips))
 			for k, l := range j.Ips {
@@ -1682,11 +1695,14 @@ func readServerPublicNetworks(pncItem map[string]interface{}, pubNet []bmcapicli
 				ispnItem := pni[k].(map[string]interface{})["server_public_network"].([]interface{})[0].(map[string]interface{})
 				if ispnItem["id"] == j.Id {
 					ipsInput := ispnItem["ips"].(*schema.Set).List()
+					spnItem["compute_slaac_ip"] = ispnItem["compute_slaac_ip"].(bool)
 					if ipv6 {
 						spnItem["ips"] = ipsInput
-						spnItem["compute_slaac_ip"] = ispnItem["compute_slaac_ip"].(bool)
 					} else {
-						ipsi := resolveIps(ipsInput, j.Ips)
+						ipsi, err := resolveIps(ipsInput, j.Ips)
+						if err != nil {
+							return nil, err
+						}
 						spnItem["ips"] = ipsi
 					}
 				}
@@ -1703,52 +1719,61 @@ func readServerPublicNetworks(pncItem map[string]interface{}, pubNet []bmcapicli
 		pn[i] = pnItem
 	}
 	pncItem["public_networks"] = pn
-	return pncItem
+	return pncItem, nil
 }
 
 // resolveIps returns configuration value of IPs if it is the same as API value (only written in different format) or if it is an empty array of IPs
 // In other cases it returns the API response value
-func resolveIps(ipsInput []interface{}, ipsApi []string) []interface{} {
+func resolveIps(ipsInput []interface{}, ipsApi []string) ([]interface{}, error) {
 	if len(ipsInput) == 1 && ipsInput[0] == "" {
-		return ipsInput
+		return ipsInput, nil
 	} else if ipsApi != nil {
-		ipsApiMono := divideIpsRange(ipsApi)
+		ipsApiMono, err := divideIpsRange(ipsApi)
+		if err != nil {
+			return nil, err
+		}
 
 		ipsInputS := make([]string, len(ipsInput))
 		for m, n := range ipsInput {
 			ipsInputS[m] = n.(string)
 		}
-		ipsInputMono := divideIpsRange(ipsInputS)
+		ipsInputMono, err := divideIpsRange(ipsInputS)
+		if err != nil {
+			return nil, err
+		}
 
 		ipsInputMonoPurged := removeDuplicateIps(ipsInputMono)
 
 		if compareIps(ipsApiMono, ipsInputMonoPurged) {
-			return ipsInput
+			return ipsInput, nil
 		} else {
 			ips := make([]interface{}, len(ipsApi))
 			for o, p := range ipsApi {
 				ips[o] = p
 			}
-			return ips
+			return ips, nil
 		}
 	}
-	return ipsInput
+	return ipsInput, nil
 }
 
 // divideIpsRange transforms a slice of IP addresses in range format to a slice of individual IP addresses.
-func divideIpsRange(ipsRanged []string) []string {
+func divideIpsRange(ipsRanged []string) ([]string, error) {
 	var ipsMono []string
 	for _, j := range ipsRanged {
 		if strings.Contains(j, "-") {
 			firstLast := strings.Split(j, "-")
-			if len(firstLast) == 1 {
-				singleIp := strings.TrimSpace(firstLast[0])
-				ipsMono = append(ipsMono, singleIp)
-			} else if len(firstLast) > 1 {
+			if len(firstLast) > 1 {
 				first := strings.TrimSpace(firstLast[0])
 				last := strings.TrimSpace(firstLast[1])
-				firstAddr, _ := netip.ParseAddr(first)
-				lastAddr, _ := netip.ParseAddr(last)
+				firstAddr, err := netip.ParseAddr(first)
+				if err != nil {
+					return nil, err
+				}
+				lastAddr, err := netip.ParseAddr(last)
+				if err != nil {
+					return nil, err
+				}
 				nextAddr := firstAddr.Next()
 
 				num1 := binary.BigEndian.Uint32(firstAddr.AsSlice())
@@ -1769,7 +1794,7 @@ func divideIpsRange(ipsRanged []string) []string {
 			ipsMono = append(ipsMono, j)
 		}
 	}
-	return ipsMono
+	return ipsMono, nil
 }
 
 // compareIps compares slices of individual IP addresses and returns true if they are equal or false if they are not equal.
