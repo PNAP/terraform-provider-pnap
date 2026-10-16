@@ -577,8 +577,8 @@ func resourceServer() *schema.Resource {
 			},
 		},
 		CustomizeDiff: func(ctx context.Context, diff *schema.ResourceDiff, meta interface{}) error {
-			isNullPrivIps, isNullDhcp := markNotSetPrivateNetworkFields(diff)
-			isNullComputeSlaacIp := markNotSetPublicNetworkComputeSlaacIpForCustomize(diff)
+			isNullPrivIps, isNullDhcp, isUnknownId := markNotSetPrivateNetworkFields(diff)
+			isNullComputeSlaacIp, isUnknownPubId := markNotSetPublicNetworkFields(diff)
 			oldRawNCint, rawNCint := diff.GetChange("network_configuration")
 			var oldIds []string
 			var oldPubIds []string
@@ -620,6 +620,11 @@ func resourceServer() *schema.Resource {
 					privateNetworkConfigurationItem := privateNetworkConfiguration.(map[string]interface{})
 					rawPN := privateNetworkConfigurationItem["private_networks"].([]interface{})
 					for i := range rawPN {
+						if diff.Id() != "" && len(isUnknownId) == len(rawPN) && i > 0 {
+							if !isUnknownId[i] && isUnknownId[i-1] {
+								return fmt.Errorf("Create/apply the referenced network first, then apply the server update.")
+							}
+						}
 						if rawPN[i] != nil && len(rawPN[i].(map[string]interface{})["server_private_network"].([]interface{})) > 0 {
 							ispnItem := rawPN[i].(map[string]interface{})["server_private_network"].([]interface{})[0].(map[string]interface{})
 							id := ispnItem["id"].(string)
@@ -651,6 +656,11 @@ func resourceServer() *schema.Resource {
 					publicNetworkConfigurationItem := publicNetworkConfiguration.(map[string]interface{})
 					rawPN := publicNetworkConfigurationItem["public_networks"].([]interface{})
 					for i := range rawPN {
+						if diff.Id() != "" && len(isUnknownPubId) == len(rawPN) && i > 0 {
+							if !isUnknownPubId[i] && isUnknownPubId[i-1] {
+								return fmt.Errorf("Create/apply the referenced network first, then apply the server update.")
+							}
+						}
 						if rawPN[i] != nil && len(rawPN[i].(map[string]interface{})["server_public_network"].([]interface{})) > 0 {
 							ispnItem := rawPN[i].(map[string]interface{})["server_public_network"].([]interface{})[0].(map[string]interface{})
 							id := ispnItem["id"].(string)
@@ -2594,10 +2604,11 @@ func compareInputIps(isNullIps bool, oldIps []string, newIps []string) (bool, er
 	}
 }
 
-// markNotSetPrivateNetworkFields returns which of the private network's fields ips and dhcp, are not set in configuration
-func markNotSetPrivateNetworkFields(diff *schema.ResourceDiff) ([]bool, []bool) {
+// markNotSetPrivateNetworkFields returns which of the private network's fields are not set or unknown in configuration
+func markNotSetPrivateNetworkFields(diff *schema.ResourceDiff) ([]bool, []bool, []bool) {
 	var isNullPrivIps []bool
 	var isNullDhcp []bool
+	var isUnknownId []bool
 	rawConfig := diff.GetRawConfig()
 	objType := rawConfig.Type()
 	if ok := objType.HasAttribute("network_configuration"); ok {
@@ -2612,6 +2623,7 @@ func markNotSetPrivateNetworkFields(diff *schema.ResourceDiff) ([]bool, []bool) 
 					for i := 0; i < pNet.LengthInt(); i++ {
 						isNullPrivIps = append(isNullPrivIps, false)
 						isNullDhcp = append(isNullDhcp, false)
+						isUnknownId = append(isUnknownId, false)
 						pNetItem := pNet.Index(cty.NumberIntVal(int64(i)))
 						spn := pNetItem.GetAttr("server_private_network")
 						if !spn.IsNull() && spn.IsKnown() && spn.LengthInt() > 0 {
@@ -2624,18 +2636,23 @@ func markNotSetPrivateNetworkFields(diff *schema.ResourceDiff) ([]bool, []bool) 
 							if dhcp.IsNull() {
 								isNullDhcp[i] = true
 							}
+							id := spnItem.GetAttr("id")
+							if !id.IsKnown() {
+								isUnknownId[i] = true
+							}
 						}
 					}
 				}
 			}
 		}
 	}
-	return isNullPrivIps, isNullDhcp
+	return isNullPrivIps, isNullDhcp, isUnknownId
 }
 
-// markNotSetPublicNetworkComputeSlaacIp returns which of the public network's compute_slaac_ip are not set in configuration
-func markNotSetPublicNetworkComputeSlaacIpForCustomize(diff *schema.ResourceDiff) []bool {
+// markNotSetPublicNetworkFields returns which of the public network's fields are not set or unknown in configuration
+func markNotSetPublicNetworkFields(diff *schema.ResourceDiff) ([]bool, []bool) {
 	var isNullComputeSlaacIp []bool
+	var isUnknownPubId []bool
 	rawConfig := diff.GetRawConfig()
 	objType := rawConfig.Type()
 	if ok := objType.HasAttribute("network_configuration"); ok {
@@ -2649,6 +2666,7 @@ func markNotSetPublicNetworkComputeSlaacIpForCustomize(diff *schema.ResourceDiff
 				if !pNet.IsNull() && pNet.IsKnown() && pNet.LengthInt() > 0 {
 					for i := 0; i < pNet.LengthInt(); i++ {
 						isNullComputeSlaacIp = append(isNullComputeSlaacIp, false)
+						isUnknownPubId = append(isUnknownPubId, false)
 						pNetItem := pNet.Index(cty.NumberIntVal(int64(i)))
 						spn := pNetItem.GetAttr("server_public_network")
 						if !spn.IsNull() && spn.IsKnown() && spn.LengthInt() > 0 {
@@ -2657,13 +2675,17 @@ func markNotSetPublicNetworkComputeSlaacIpForCustomize(diff *schema.ResourceDiff
 							if slaac.IsNull() {
 								isNullComputeSlaacIp[i] = true
 							}
+							id := spnItem.GetAttr("id")
+							if !id.IsKnown() {
+								isUnknownPubId[i] = true
+							}
 						}
 					}
 				}
 			}
 		}
 	}
-	return isNullComputeSlaacIp
+	return isNullComputeSlaacIp, isUnknownPubId
 }
 
 // markNotSetPublicNetworkComputeSlaacIp returns which of the public network's compute_slaac_ip are not set in configuration
