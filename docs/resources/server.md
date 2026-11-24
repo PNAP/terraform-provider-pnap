@@ -122,7 +122,7 @@ The following arguments are supported:
 * `tags` - Tags to set to server, if any. Structure is documented below.
 * `network_configuration` - Entire network details of bare metal server. Structure is documented below.
 * `storage_configuration` - Storage configuration. Structure is documented below.
-* `action` - Action to perform on server. Allowed actions are: reboot, reset (deprecated), powered-on, powered-off, shutdown.
+* `action` - Action to perform on server. Allowed actions are: reboot, powered-on, powered-off, shutdown.
 * `force` - Query parameter controlling advanced features availability. Currently applicable for networking. It is advised to use with caution since it might lead to unhealthy setups.
 * `delete_ip_blocks` - Determines whether the IP blocks assigned to the server should be deleted or not when the server is being deleted, i.e. [deprovisioned](https://developers.phoenixnap.com/docs/bmc/1/routes/servers/%7BserverId%7D/actions/deprovision/post). Default value is `false`.
 * `transfer_reservation_to` - ID of target server to transfer reservation to.

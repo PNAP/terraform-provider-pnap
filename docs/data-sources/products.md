@@ -35,7 +35,7 @@ The following arguments are supported:
 * `product_code` - The code identifying the product. This code has significance across all locations.
 * `product_category` - The product category.
 * `sku_code` - The SKU identifier.
-* `location` - The location code. Currently the following values are allowed: `PHX`, `ASH`, `NLD`, `SGP`, `CHI`, `SEA` and `GLOBAL`.
+* `location` - The location code. For a full list of available locations visit [API docs](https://developers.phoenixnap.com/docs/bmc-billing/1).
 
 
 ## Attributes Reference

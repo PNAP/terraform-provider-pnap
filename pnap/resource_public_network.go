@@ -72,6 +72,23 @@ func resourcePublicNetwork() *schema.Resource {
 										Type:     schema.TypeString,
 										Computed: true,
 									},
+									"reserved_ips": {
+										Type:     schema.TypeList,
+										Computed: true,
+										Elem: &schema.Resource{
+											Schema: map[string]*schema.Schema{
+												"ips": {
+													Type:     schema.TypeSet,
+													Computed: true,
+													Elem:     &schema.Schema{Type: schema.TypeString},
+												},
+												"assignable_with_force": {
+													Type:     schema.TypeBool,
+													Computed: true,
+												},
+											},
+										},
+									},
 								},
 							},
 						},
@@ -278,7 +295,7 @@ func resourcePublicNetworkUpdate(d *schema.ResourceData, m interface{}) error {
 				if err != nil {
 					return err
 				}
-				waitResultError := ipBlockWaitForUnassign(p, &client)
+				waitResultError := ipBlockWaitForUnassign(p, &client, d.Timeout(schema.TimeoutDelete))
 				if waitResultError != nil {
 					return waitResultError
 				}
@@ -297,7 +314,7 @@ func resourcePublicNetworkUpdate(d *schema.ResourceData, m interface{}) error {
 				if err != nil {
 					return err
 				}
-				waitResultError := ipBlockWaitForUnassign(t, &client)
+				waitResultError := ipBlockWaitForUnassign(t, &client, d.Timeout(schema.TimeoutDelete))
 				if waitResultError != nil {
 					return waitResultError
 				}
@@ -460,6 +477,8 @@ func flattenIpBlocks(pubNetIpBlock []networkapiclient.PublicNetworkIpBlock, ipBl
 					if len(j.UsedIpsCount) > 0 {
 						pnibItem["used_ips_count"] = j.UsedIpsCount
 					}
+					pnibItem["reserved_ips"] = flattenReservedIps(j.ReservedIps)
+
 					if !ipBlocksExists {
 						pnib[0] = pnibItem
 						ibItem["public_network_ip_block"] = pnib

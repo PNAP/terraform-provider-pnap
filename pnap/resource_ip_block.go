@@ -14,8 +14,7 @@ import (
 )
 
 const (
-	pnapIpBlockRetryDelay   = 15 * time.Second
-	pnapIpBlockRetryTimeout = 15 * time.Minute
+	pnapIpBlockRetryDelay = 15 * time.Second
 )
 
 func resourceIpBlock() *schema.Resource {
@@ -314,7 +313,7 @@ func resourceIpBlockDelete(d *schema.ResourceData, m interface{}) error {
 
 	ipBlockID := d.Id()
 
-	waitResultError := ipBlockWaitForUnassign(ipBlockID, &client)
+	waitResultError := ipBlockWaitForUnassign(ipBlockID, &client, d.Timeout(schema.TimeoutDelete))
 	if waitResultError != nil {
 		return waitResultError
 	}
@@ -356,14 +355,14 @@ func flattenTags(tagsRead []ipapiclient.TagAssignment, tagsInput []interface{}) 
 	return tagsInput
 }
 
-func ipBlockWaitForUnassign(id string, client *receiver.BMCSDK) error {
+func ipBlockWaitForUnassign(id string, client *receiver.BMCSDK, timeout time.Duration) error {
 	log.Printf("Waiting for ip block %s to be unassigned...", id)
 
 	stateConf := &resource.StateChangeConf{
 		Pending:    []string{"unassigning", "assigning"},
 		Target:     []string{"unassigned", "assigned"},
 		Refresh:    refreshForIpBlockStatus(client, id),
-		Timeout:    pnapIpBlockRetryTimeout,
+		Timeout:    timeout,
 		Delay:      pnapIpBlockRetryDelay,
 		MinTimeout: pnapRetryMinTimeout,
 	}

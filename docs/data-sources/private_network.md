@@ -54,5 +54,8 @@ The following attributes are exported:
     * `resource_id` - The resource identifier.
     * `resource_type` - The resource's type.
     * `ips` - List of public IPs associated to the resource.
+* `reserved_ips` - Reserved IP addresses within this network.
+    * `ips` - A list containing reserved IP addresses or inclusive IP ranges.
+    * `assignable_with_force` - Indicates whether the reserved IP addresses can be assigned to a resource when the assignment request is made with `force` query parameter set to `true`.
 * `status` - The status of the private network.
 * `created_on` - Date and time when this private network was created.

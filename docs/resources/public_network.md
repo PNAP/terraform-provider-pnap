@@ -40,7 +40,7 @@ The following arguments are supported:
 
 * `name` - (Required) The friendly name of this public network. This name should be unique.
 * `description` - The description of this public network.
-* `location` - (Required) The location of this public network. Supported values are `PHX`, `ASH`, `SGP`, `NLD`, `CHI` and `SEA`.
+* `location` - (Required) The location of this public network. For a full list of available locations visit [API docs](https://developers.phoenixnap.com/docs/networks/1).
 * `vlan_id `- The VLAN that will be assigned to this network.
 * `ip_blocks` - A list of IP Blocks that will be associated with this public network (10 items at most).
     * `public_network_ip_block` - The assigned IP Block to the public network.
@@ -68,4 +68,7 @@ The following attributes are exported:
         * `id` - The IP Block identifier.
         * `cidr` - The CIDR notation of the IP block.
         * `used_ips_count` - The number of IPs used in the IP block.
+        * `reserved_ips` - Reserved IP addresses within this network IP block.
+            * `ips` - A list containing reserved IP addresses or inclusive IP ranges.
+            * `assignable_with_force` - Indicates whether the reserved IP addresses can be assigned to a resource when the assignment request is made with `force` query parameter set to `true`.
 * `ra_enabled` - Boolean indicating whether Router Advertisement is enabled. Only applicable for Network with IPv6 Blocks.

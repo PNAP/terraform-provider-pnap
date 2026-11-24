@@ -53,6 +53,23 @@ func dataSourcePublicNetwork() *schema.Resource {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
+						"reserved_ips": {
+							Type:     schema.TypeList,
+							Computed: true,
+							Elem: &schema.Resource{
+								Schema: map[string]*schema.Schema{
+									"ips": {
+										Type:     schema.TypeSet,
+										Computed: true,
+										Elem:     &schema.Schema{Type: schema.TypeString},
+									},
+									"assignable_with_force": {
+										Type:     schema.TypeBool,
+										Computed: true,
+									},
+								},
+							},
+						},
 					},
 				},
 			},
@@ -155,6 +172,7 @@ func flattenDataIpBlocks(ipBlocks []networkapiclient.PublicNetworkIpBlock) []int
 			ibItem["id"] = j.Id
 			ibItem["cidr"] = j.Cidr
 			ibItem["used_ips_count"] = j.UsedIpsCount
+			ibItem["reserved_ips"] = flattenReservedIps(j.ReservedIps)
 			ib[i] = ibItem
 		}
 		return ib

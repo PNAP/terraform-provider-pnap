@@ -54,4 +54,7 @@ The following attributes are exported:
     * `id` - The IP Block identifier.
     * `cidr` - The CIDR notation of the IP block.
     * `used_ips_count` - The number of IPs used in the IP block.
+    * `reserved_ips` - Reserved IP addresses within this network IP block.
+        * `ips` - A list containing reserved IP addresses or inclusive IP ranges.
+        * `assignable_with_force` - Indicates whether the reserved IP addresses can be assigned to a resource when the assignment request is made with `force` query parameter set to `true`.
 * `ra_enabled` - Boolean indicating whether Router Advertisement is enabled. Only applicable for Network with IPv6 Blocks.

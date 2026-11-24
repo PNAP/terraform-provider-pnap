@@ -32,7 +32,7 @@ output "Locations" {
 
 The following arguments are supported:
 
-* `location` - The location code. Currently the following values are allowed: `PHX`, `ASH`, `NLD`, `SGP`, `CHI` and `SEA`.
+* `location` - The location code. For a full list of available locations visit [API docs](https://developers.phoenixnap.com/docs/bmc-location/1).
 * `product_category` - The product category. Currently the following values are allowed: `SERVER`, `BANDWIDTH`, `OPERATING_SYSTEM`, `PUBLIC_IP` and `STORAGE`.
 
 

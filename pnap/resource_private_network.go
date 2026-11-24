@@ -108,6 +108,23 @@ func resourcePrivateNetwork() *schema.Resource {
 					},
 				},
 			},
+			"reserved_ips": {
+				Type:     schema.TypeList,
+				Computed: true,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"ips": {
+							Type:     schema.TypeSet,
+							Computed: true,
+							Elem:     &schema.Schema{Type: schema.TypeString},
+						},
+						"assignable_with_force": {
+							Type:     schema.TypeBool,
+							Computed: true,
+						},
+					},
+				},
+			},
 			"status": {
 				Type:     schema.TypeString,
 				Computed: true,
@@ -188,6 +205,10 @@ func resourcePrivateNetworkRead(d *schema.ResourceData, m interface{}) error {
 	}
 	memberships := flattenMemberships(resp.Memberships)
 	if err := d.Set("memberships", memberships); err != nil {
+		return err
+	}
+	reservedIps := flattenReservedIps(resp.ReservedIps)
+	if err := d.Set("reserved_ips", reservedIps); err != nil {
 		return err
 	}
 	d.Set("status", resp.Status)
@@ -309,4 +330,22 @@ func refreshForPrivateNetworkMembershipStatus(client *receiver.BMCSDK, id string
 			return 0, "unassigned", nil
 		}
 	}
+}
+
+func flattenReservedIps(reservedIps []networkapiclient.ReservedIp) []interface{} {
+	if reservedIps != nil {
+		resIps := make([]interface{}, len(reservedIps))
+		for i, v := range reservedIps {
+			resIp := make(map[string]interface{})
+			ips := make([]interface{}, len(v.Ips))
+			for j, k := range v.Ips {
+				ips[j] = k
+			}
+			resIp["ips"] = ips
+			resIp["assignable_with_force"] = v.AssignableWithForce
+			resIps[i] = resIp
+		}
+		return resIps
+	}
+	return make([]interface{}, 0)
 }

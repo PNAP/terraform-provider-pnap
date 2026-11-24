@@ -89,6 +89,23 @@ func dataSourcePrivateNetwork() *schema.Resource {
 					},
 				},
 			},
+			"reserved_ips": {
+				Type:     schema.TypeList,
+				Computed: true,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"ips": {
+							Type:     schema.TypeSet,
+							Computed: true,
+							Elem:     &schema.Schema{Type: schema.TypeString},
+						},
+						"assignable_with_force": {
+							Type:     schema.TypeBool,
+							Computed: true,
+						},
+					},
+				},
+			},
 			"status": {
 				Type:     schema.TypeString,
 				Computed: true,
@@ -129,6 +146,10 @@ func dataSourcePrivateNetworkRead(d *schema.ResourceData, m interface{}) error {
 			memberships := flattenMemberships(instance.Memberships)
 
 			if err := d.Set("memberships", memberships); err != nil {
+				return err
+			}
+			reservedIps := flattenReservedIps(instance.ReservedIps)
+			if err := d.Set("reserved_ips", reservedIps); err != nil {
 				return err
 			}
 			d.Set("status", instance.Status)

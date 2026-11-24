@@ -61,7 +61,7 @@ The following arguments are supported:
 
 * `name` - (Required) The friendly name of this private network. This name should be unique.
 * `description` - The description of this private network.
-* `location` - (Required) The location of this private network. Supported values are `PHX`, `ASH`, `SGP`, `NLD`, `CHI` and `SEA`.
+* `location` - (Required) The location of this private network. For a full list of available locations visit [API docs](https://developers.phoenixnap.com/docs/networks/1).
 * `location_default` - Identifies network as the default private network for the specified location. Default value is `false`.
 * `vlan_id `- The VLAN that will be assigned to this network.
 * `cidr` - IP range associated with this private network in CIDR notation. Setting the `force` query parameter to `true` allows you to skip assigning a specific IP range to network.
@@ -86,5 +86,8 @@ The following attributes are exported:
     * `resource_id` - The resource identifier.
     * `resource_type` - The resource's type.
     * `ips` - List of public IPs associated to the resource.
+* `reserved_ips` - Reserved IP addresses within this network.
+    * `ips` - A list containing reserved IP addresses or inclusive IP ranges.
+    * `assignable_with_force` - Indicates whether the reserved IP addresses can be assigned to a resource when the assignment request is made with `force` query parameter set to `true`.
 * `status` - The status of the private network.
 * `created_on` - Date and time when this private network was created.
